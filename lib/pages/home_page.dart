@@ -25,7 +25,7 @@ import 'package:flutter_sandbox/pages/product_list_page.dart';
 import 'package:flutter_sandbox/pages/product_create_page.dart';
 import 'package:flutter_sandbox/pages/product_delete_page.dart';
 import 'package:flutter_sandbox/pages/product_detail_page.dart';
-import 'package:flutter_sandbox/pages/chat_page.dart';
+import 'package:flutter_sandbox/pages/chat_list_page.dart';
 import 'package:flutter_sandbox/pages/email_auth_page.dart';
 import 'package:flutter_sandbox/pages/map_page.dart';
 import 'package:flutter_sandbox/models/product.dart';
@@ -165,7 +165,9 @@ class _HomePageState extends State<HomePage> {
             builder: (context, loginProvider, emailAuthProvider, child) {
               final isLoggedIn =
                   loginProvider.user != null || emailAuthProvider.user != null;
-              return !isLoggedIn ? const Text('로그인 해주세요') : const Chat();
+              return !isLoggedIn 
+                  ? const Center(child: Text('로그인 해주세요'))
+                  : const ChatListPage();
             },
           ),
         ],
@@ -200,15 +202,6 @@ class _HomePageState extends State<HomePage> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => const MapScreen()),
-                );
-                return;
-              }
-              if (index == 2) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const ChatPage(opponentName: '상대방'),
-                  ),
                 );
                 return;
               }
@@ -868,11 +861,3 @@ class Life extends StatelessWidget {
   }
 }
 
-class Chat extends StatelessWidget {
-  const Chat({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(child: Text('채팅 페이지'));
-  }
-}
