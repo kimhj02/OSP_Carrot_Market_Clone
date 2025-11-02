@@ -28,6 +28,7 @@ import 'package:flutter_sandbox/pages/product_detail_page.dart';
 import 'package:flutter_sandbox/pages/chat_list_page.dart';
 import 'package:flutter_sandbox/pages/email_auth_page.dart';
 import 'package:flutter_sandbox/pages/map_page.dart';
+import 'package:flutter_sandbox/pages/profile_page.dart';
 import 'package:flutter_sandbox/models/product.dart';
 
 /// 앱의 홈 페이지를 나타내는 위젯
@@ -46,6 +47,28 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    // 로그아웃 상태를 감지하여 홈으로 자동 이동
+    return Consumer2<KakaoLoginProvider, EmailAuthProvider>(
+      builder: (context, loginProvider, emailAuthProvider, child) {
+        // 로그인 상태 확인
+        final isLoggedIn = 
+            loginProvider.user != null || emailAuthProvider.user != null;
+        
+        // 로그아웃 상태이고 다른 탭에 있으면 홈으로 이동
+        if (!isLoggedIn && IndexedStackState != 0) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            setState(() {
+              IndexedStackState = 0;
+            });
+          });
+        }
+        
+        return _buildScaffold(context);
+      },
+    );
+  }
+  
+  Widget _buildScaffold(BuildContext context) {
     return Scaffold(
       // 금오 마켓 스타일의 앱바
       appBar: AppBar(
@@ -170,6 +193,16 @@ class _HomePageState extends State<HomePage> {
                   : const ChatListPage();
             },
           ),
+
+          Consumer2<KakaoLoginProvider, EmailAuthProvider>(
+            builder: (context, loginProvider, emailAuthProvider, child) {
+              final isLoggedIn =
+                  loginProvider.user != null || emailAuthProvider.user != null;
+              return !isLoggedIn 
+                  ? const Center(child: Text('로그인 해주세요'))
+                  : const ProfilePage();
+            },
+          ), // 나의 금오
         ],
       ),
 
@@ -194,6 +227,10 @@ class _HomePageState extends State<HomePage> {
               BottomNavigationBarItem(
                 icon: Icon(Icons.chat_bubble_outline),
                 label: '채팅',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.person),
+                label: '나의 금오',
               ),
             ],
             onTap: (index) {
@@ -351,12 +388,6 @@ class _HomePageState extends State<HomePage> {
     EmailAuthProvider emailAuthProvider,
     BuildContext context,
   ) {
-    // 로그인된 사용자 정보 (카카오 또는 이메일)
-    final isKakaoLogin = kakaoUser != null;
-    // 타입 안전성을 위한 사용자 정보 추출
-    final kakaoUserNonNull = kakaoUser;
-    final emailUserNonNull = emailUser;
-
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -531,114 +562,6 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(height: 8),
                 // 1:1 채팅 바로가기 버튼 제거됨
-              ],
-            ),
-          ),
-
-          // 사용자 정보 및 로그아웃 버튼
-          Container(
-            margin: const EdgeInsets.all(16),
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.grey[50],
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey[200]!),
-            ),
-            child: Column(
-              children: [
-                // 프로필 정보
-                Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 25,
-                      backgroundImage: isKakaoLogin
-                          ? (kakaoUserNonNull
-                                        ?.kakaoAccount
-                                        ?.profile
-                                        ?.profileImageUrl !=
-                                    null
-                                ? NetworkImage(
-                                    kakaoUserNonNull!
-                                        .kakaoAccount!
-                                        .profile!
-                                        .profileImageUrl!,
-                                  )
-                                : null)
-                          : (emailUserNonNull?.photoURL != null
-                                ? NetworkImage(emailUserNonNull.photoURL!)
-                                : null),
-                      child: isKakaoLogin
-                          ? (kakaoUserNonNull
-                                        ?.kakaoAccount
-                                        ?.profile
-                                        ?.profileImageUrl ==
-                                    null
-                                ? const Icon(Icons.person, color: Colors.grey)
-                                : null)
-                          : (emailUserNonNull?.photoURL == null
-                                ? const Icon(Icons.person, color: Colors.grey)
-                                : null),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            isKakaoLogin
-                                ? (kakaoUserNonNull
-                                          ?.kakaoAccount
-                                          ?.profile
-                                          ?.nickname ??
-                                      '사용자')
-                                : (emailUserNonNull?.displayName ??
-                                      emailUserNonNull?.email ??
-                                      '사용자'),
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Text(
-                            isKakaoLogin
-                                ? 'ID: ${kakaoUserNonNull?.id ?? ''}'
-                                : '이메일: ${emailUserNonNull?.email ?? ''}',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-
-                // 로그아웃 버튼
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: () {
-                      setState(() {
-                        IndexedStackState = 0;
-                      });
-                      if (isKakaoLogin) {
-                        loginProvider.logout();
-                      } else {
-                        emailAuthProvider.logout();
-                      }
-                    },
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.teal,
-                      side: const BorderSide(color: Colors.teal),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: const Text('로그아웃'),
-                  ),
-                ),
               ],
             ),
           ),
