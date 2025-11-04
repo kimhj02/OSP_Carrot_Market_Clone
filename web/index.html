@@ -31,6 +31,12 @@
 
   <title>flutter_sandbox</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- 웹에서 카카오 로그인 사용을 위한 SDK 로딩-->
+  <!--  무한 로그인 발생 시 카카오개발자 앱-> 카카오 로그인-> 일반, 리다이렉트 URI를 웹 플랫폼과 동일한 포트로 설정-->
+  <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.8/kakao.min.js"
+          integrity="sha384-WUSirVbD0ASvo37f3qQZuDap8wy76aJjmGyXKOYgPL/NdAs8HhgmPlk9dz2XQsNv"
+          crossorigin="anonymous"></script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>
