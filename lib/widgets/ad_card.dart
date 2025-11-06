@@ -39,7 +39,7 @@ class AdCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: InkWell(
         onTap: _handleAdTap,
         borderRadius: BorderRadius.circular(8),
@@ -56,8 +56,8 @@ class AdCard extends StatelessWidget {
               Stack(
                 children: [
                   Container(
-                    width: 80,
-                    height: 80,
+                    width: 60,
+                    height: 60,
                     decoration: BoxDecoration(
                       color: Colors.grey[200],
                       borderRadius: BorderRadius.circular(8),
@@ -67,8 +67,8 @@ class AdCard extends StatelessWidget {
                       child: Image.network(
                         ad.imageUrl,
                         fit: BoxFit.cover,
-                        width: 80,
-                        height: 80,
+                        width: 60,
+                        height: 60,
                         errorBuilder: (context, error, stackTrace) {
                           return Container(
                             color: Colors.grey[300],
@@ -110,24 +110,24 @@ class AdCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // 광고 배지
+                  // 광고 배지 (작게 표시)
                   Positioned(
-                    top: 4,
-                    right: 4,
+                    top: 2,
+                    right: 2,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
+                        horizontal: 4,
+                        vertical: 1,
                       ),
                       decoration: BoxDecoration(
                         color: Colors.orange,
-                        borderRadius: BorderRadius.circular(4),
+                        borderRadius: BorderRadius.circular(3),
                       ),
                       child: const Text(
                         '광고',
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 10,
+                          fontSize: 8,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -147,41 +147,42 @@ class AdCard extends StatelessWidget {
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: Colors.black87,
                       ),
-                      maxLines: 2,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
-                    // 광고 설명
-                    Text(
-                      ad.description,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 8),
-                    // 외부 링크 표시
+                    // 광고 설명 (상품 가격 위치와 유사하게)
                     Row(
                       children: [
                         Icon(
                           Icons.open_in_new,
-                          size: 14,
+                          size: 12,
                           color: Colors.teal[600],
                         ),
                         const SizedBox(width: 4),
-                        Text(
-                          '자세히 보기',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.teal[600],
-                            fontWeight: FontWeight.w500,
+                        Expanded(
+                          child: Text(
+                            ad.description,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.teal,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 4),
+                    // 광고 표시 (상품 위치와 유사하게)
+                    Text(
+                      '광고',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey,
+                      ),
                     ),
                   ],
                 ),

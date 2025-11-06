@@ -25,7 +25,9 @@ import 'package:flutter_sandbox/widgets/ad_card.dart';
 
 /// 상품 목록을 표시하는 페이지
 class ProductListPage extends StatefulWidget {
-  const ProductListPage({super.key});
+  final ProductCategory? initialCategory;
+  
+  const ProductListPage({super.key, this.initialCategory});
 
   @override
   State<ProductListPage> createState() => _ProductListPageState();
@@ -47,6 +49,8 @@ class _ProductListPageState extends State<ProductListPage> {
   @override
   void initState() {
     super.initState();
+    // initialCategory가 있으면 초기 카테고리로 설정
+    _selectedCategory = widget.initialCategory;
     _loadProducts();
   }
 
@@ -101,6 +105,86 @@ class _ProductListPageState extends State<ProductListPage> {
         updatedAt: DateTime.now().subtract(const Duration(days: 3)),
         viewCount: 32,
         likeCount: 8,
+      ),
+      Product(
+        id: '4',
+        title: '책상 의자 세트',
+        description: '이사로 인해 판매합니다. 상태 양호합니다',
+        price: 150000,
+        imageUrls: [],
+        category: ProductCategory.furniture,
+        status: ProductStatus.onSale,
+        sellerId: 'seller4',
+        sellerNickname: '최지영',
+        location: '강남구',
+        createdAt: DateTime.now().subtract(const Duration(days: 4)),
+        updatedAt: DateTime.now().subtract(const Duration(days: 4)),
+        viewCount: 56,
+        likeCount: 15,
+      ),
+      Product(
+        id: '5',
+        title: '유아용 장난감 세트',
+        description: '아이가 커서 사용하지 않아 판매합니다',
+        price: 50000,
+        imageUrls: [],
+        category: ProductCategory.kids,
+        status: ProductStatus.onSale,
+        sellerId: 'seller5',
+        sellerNickname: '정수진',
+        location: '서초동',
+        createdAt: DateTime.now().subtract(const Duration(days: 5)),
+        updatedAt: DateTime.now().subtract(const Duration(days: 5)),
+        viewCount: 28,
+        likeCount: 7,
+      ),
+      Product(
+        id: '6',
+        title: '강아지 사료 및 간식',
+        description: '포장 개봉하지 않은 새 제품입니다',
+        price: 30000,
+        imageUrls: [],
+        category: ProductCategory.pets,
+        status: ProductStatus.onSale,
+        sellerId: 'seller6',
+        sellerNickname: '김동욱',
+        location: '역삼동',
+        createdAt: DateTime.now().subtract(const Duration(days: 6)),
+        updatedAt: DateTime.now().subtract(const Duration(days: 6)),
+        viewCount: 41,
+        likeCount: 12,
+      ),
+      Product(
+        id: '7',
+        title: '자전거 판매',
+        description: '잘 타던 자전거입니다. A/S 받았습니다',
+        price: 200000,
+        imageUrls: [],
+        category: ProductCategory.sports,
+        status: ProductStatus.onSale,
+        sellerId: 'seller7',
+        sellerNickname: '이호진',
+        location: '송파구',
+        createdAt: DateTime.now().subtract(const Duration(days: 7)),
+        updatedAt: DateTime.now().subtract(const Duration(days: 7)),
+        viewCount: 89,
+        likeCount: 34,
+      ),
+      Product(
+        id: '8',
+        title: '여성 코트',
+        description: '사이즈 100, 2번 정도만 입었습니다',
+        price: 120000,
+        imageUrls: [],
+        category: ProductCategory.womenClothing,
+        status: ProductStatus.onSale,
+        sellerId: 'seller8',
+        sellerNickname: '한소희',
+        location: '강남구',
+        createdAt: DateTime.now().subtract(const Duration(days: 8)),
+        updatedAt: DateTime.now().subtract(const Duration(days: 8)),
+        viewCount: 67,
+        likeCount: 21,
       ),
     ];
   }
