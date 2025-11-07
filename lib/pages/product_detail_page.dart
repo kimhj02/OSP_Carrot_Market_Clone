@@ -458,7 +458,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                     vertical: 10,
                   ),
                 ),
-                maxLines: 1,  ///????
+                maxLines: 1,
                 enabled: !_isSending,
 
                 ///  클릭 시 전체 선택
