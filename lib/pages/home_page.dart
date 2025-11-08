@@ -123,7 +123,10 @@ class _HomePageState extends State<HomePage> {
           IconButton(
             icon: const Icon(Icons.search, color: Colors.black),
             onPressed: () {
-              // 검색 기능 (향후 구현)
+              Navigator.push(
+                  context,
+                 MaterialPageRoute(builder: (context) => const SearchPage()),
+                 );
             },
           ),
           // 메뉴 아이콘
