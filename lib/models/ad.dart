@@ -26,9 +26,6 @@ class Ad {
   /// 광고 링크 URL (클릭 시 이동할 주소)
   final String linkUrl;
 
-  /// 광고 삽입 위치 (상품 목록에서 몇 번째 위치에 삽입할지)
-  final int position;
-
   /// 광고 활성화 여부
   final bool isActive;
 
@@ -45,7 +42,6 @@ class Ad {
     required this.description,
     required this.imageUrl,
     required this.linkUrl,
-    required this.position,
     required this.isActive,
     required this.createdAt,
     required this.updatedAt,
@@ -59,7 +55,6 @@ class Ad {
       description: data['description'] as String? ?? '',
       imageUrl: data['imageUrl'] as String? ?? '',
       linkUrl: data['linkUrl'] as String? ?? '',
-      position: (data['position'] as int?) ?? 0,
       isActive: data['isActive'] as bool? ?? false,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       updatedAt: (data['updatedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
@@ -73,7 +68,6 @@ class Ad {
       'description': description,
       'imageUrl': imageUrl,
       'linkUrl': linkUrl,
-      'position': position,
       'isActive': isActive,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
@@ -88,7 +82,6 @@ class Ad {
       description: json['description'] as String,
       imageUrl: json['imageUrl'] as String,
       linkUrl: json['linkUrl'] as String,
-      position: json['position'] as int,
       isActive: json['isActive'] as bool,
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
@@ -103,7 +96,6 @@ class Ad {
       'description': description,
       'imageUrl': imageUrl,
       'linkUrl': linkUrl,
-      'position': position,
       'isActive': isActive,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
@@ -117,7 +109,6 @@ class Ad {
     String? description,
     String? imageUrl,
     String? linkUrl,
-    int? position,
     bool? isActive,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -128,7 +119,6 @@ class Ad {
       description: description ?? this.description,
       imageUrl: imageUrl ?? this.imageUrl,
       linkUrl: linkUrl ?? this.linkUrl,
-      position: position ?? this.position,
       isActive: isActive ?? this.isActive,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -137,7 +127,7 @@ class Ad {
 
   @override
   String toString() {
-    return 'Ad(id: $id, title: $title, position: $position, isActive: $isActive)';
+    return 'Ad(id: $id, title: $title, isActive: $isActive)';
   }
 
   @override
@@ -149,4 +139,3 @@ class Ad {
   @override
   int get hashCode => id.hashCode;
 }
-
