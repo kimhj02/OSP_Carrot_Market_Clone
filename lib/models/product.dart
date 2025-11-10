@@ -21,26 +21,23 @@ enum ProductStatus {
 
 /// 상품 카테고리를 나타내는 enum
 enum ProductCategory {
-  /// 디지털기기
+  /// 전자기기
   digital,
 
-  /// 가구/인테리어
-  furniture,
+  /// 전공책
+  textbooks,
 
-  /// 유아동
-  kids,
+  /// 생활용품
+  daily,
 
-  /// 반려동물
-  pets,
+  /// 가구/주거
+  housing,
 
-  /// 스포츠/레저
-  sports,
+  /// 패션/잡화
+  fashion,
 
-  /// 여성의류
-  womenClothing,
-
-  /// 남성의류
-  menClothing,
+  /// 취미/레저
+  hobby,
 
   /// 기타
   etc,
@@ -191,19 +188,17 @@ class Product {
   String get categoryText {
     switch (category) {
       case ProductCategory.digital:
-        return '디지털기기';
-      case ProductCategory.furniture:
-        return '가구/인테리어';
-      case ProductCategory.kids:
-        return '유아동';
-      case ProductCategory.pets:
-        return '반려동물';
-      case ProductCategory.sports:
-        return '스포츠/레저';
-      case ProductCategory.womenClothing:
-        return '여성의류';
-      case ProductCategory.menClothing:
-        return '남성의류';
+        return '전자기기';
+      case ProductCategory.textbooks:
+        return '전공책';
+      case ProductCategory.daily:
+        return '생활용품';
+      case ProductCategory.housing:
+        return '가구/주거';
+      case ProductCategory.fashion:
+        return '패션/잡화';
+      case ProductCategory.hobby:
+        return '취미/레저';
       case ProductCategory.etc:
         return '기타';
     }

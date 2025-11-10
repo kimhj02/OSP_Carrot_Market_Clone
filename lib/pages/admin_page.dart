@@ -74,7 +74,11 @@ class _AdminPageState extends State<AdminPage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.campaign_outlined, size: 64, color: Colors.grey[400]),
+                  Icon(
+                    Icons.campaign_outlined,
+                    size: 64,
+                    color: Colors.grey[400],
+                  ),
                   const SizedBox(height: 16),
                   Text(
                     '등록된 광고가 없습니다',
@@ -174,7 +178,10 @@ class _AdminPageState extends State<AdminPage> {
                     errorBuilder: (context, error, stackTrace) {
                       return Container(
                         color: Colors.grey[300],
-                        child: const Icon(Icons.broken_image, color: Colors.grey),
+                        child: const Icon(
+                          Icons.broken_image,
+                          color: Colors.grey,
+                        ),
                       );
                     },
                   ),
@@ -196,17 +203,6 @@ class _AdminPageState extends State<AdminPage> {
               ],
             ),
             const SizedBox(height: 4),
-            Row(
-              children: [
-                Icon(Icons.location_on, size: 16, color: Colors.grey[600]),
-                const SizedBox(width: 4),
-                Text(
-                  '삽입 위치: ${ad.position}번째',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
             // 버튼들
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -244,7 +240,8 @@ class _AdminPageState extends State<AdminPage> {
                 const SizedBox(width: 8),
                 // 삭제 버튼
                 TextButton.icon(
-                  onPressed: () => _showDeleteConfirmDialog(context, ad, adProvider),
+                  onPressed: () =>
+                      _showDeleteConfirmDialog(context, ad, adProvider),
                   icon: const Icon(Icons.delete, size: 18, color: Colors.red),
                   label: const Text('삭제', style: TextStyle(color: Colors.red)),
                 ),
@@ -262,7 +259,6 @@ class _AdminPageState extends State<AdminPage> {
     final descriptionController = TextEditingController();
     final imageUrlController = TextEditingController();
     final linkUrlController = TextEditingController();
-    final positionController = TextEditingController(text: '0');
     bool isActive = true;
 
     showDialog(
@@ -307,15 +303,6 @@ class _AdminPageState extends State<AdminPage> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                TextField(
-                  controller: positionController,
-                  decoration: const InputDecoration(
-                    labelText: '삽입 위치 (숫자)',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.number,
-                ),
-                const SizedBox(height: 12),
                 CheckboxListTile(
                   title: const Text('활성화'),
                   value: isActive,
@@ -335,16 +322,16 @@ class _AdminPageState extends State<AdminPage> {
             ),
             TextButton(
               onPressed: () async {
-                final adProvider = Provider.of<AdProvider>(context, listen: false);
-                final position = int.tryParse(positionController.text) ?? 0;
-
+                final adProvider = Provider.of<AdProvider>(
+                  context,
+                  listen: false,
+                );
                 final ad = Ad(
                   id: '',
                   title: titleController.text,
                   description: descriptionController.text,
                   imageUrl: imageUrlController.text,
                   linkUrl: linkUrlController.text,
-                  position: position,
                   isActive: isActive,
                   createdAt: DateTime.now(),
                   updatedAt: DateTime.now(),
@@ -353,9 +340,9 @@ class _AdminPageState extends State<AdminPage> {
                 final adId = await adProvider.addAd(ad);
                 if (adId != null && context.mounted) {
                   Navigator.of(context).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('광고가 추가되었습니다')),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('광고가 추가되었습니다')));
                 } else if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
@@ -379,7 +366,6 @@ class _AdminPageState extends State<AdminPage> {
     final descriptionController = TextEditingController(text: ad.description);
     final imageUrlController = TextEditingController(text: ad.imageUrl);
     final linkUrlController = TextEditingController(text: ad.linkUrl);
-    final positionController = TextEditingController(text: ad.position.toString());
     bool isActive = ad.isActive;
 
     showDialog(
@@ -424,15 +410,6 @@ class _AdminPageState extends State<AdminPage> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                TextField(
-                  controller: positionController,
-                  decoration: const InputDecoration(
-                    labelText: '삽입 위치 (숫자)',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.number,
-                ),
-                const SizedBox(height: 12),
                 CheckboxListTile(
                   title: const Text('활성화'),
                   value: isActive,
@@ -452,15 +429,15 @@ class _AdminPageState extends State<AdminPage> {
             ),
             TextButton(
               onPressed: () async {
-                final adProvider = Provider.of<AdProvider>(context, listen: false);
-                final position = int.tryParse(positionController.text) ?? ad.position;
-
+                final adProvider = Provider.of<AdProvider>(
+                  context,
+                  listen: false,
+                );
                 final updatedAd = ad.copyWith(
                   title: titleController.text,
                   description: descriptionController.text,
                   imageUrl: imageUrlController.text,
                   linkUrl: linkUrlController.text,
-                  position: position,
                   isActive: isActive,
                   updatedAt: DateTime.now(),
                 );
@@ -468,9 +445,9 @@ class _AdminPageState extends State<AdminPage> {
                 final success = await adProvider.updateAd(updatedAd);
                 if (success && context.mounted) {
                   Navigator.of(context).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('광고가 수정되었습니다')),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('광고가 수정되었습니다')));
                 } else if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
@@ -509,9 +486,9 @@ class _AdminPageState extends State<AdminPage> {
               final success = await adProvider.deleteAd(ad.id);
               if (success && context.mounted) {
                 Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('광고가 삭제되었습니다')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('광고가 삭제되었습니다')));
               } else if (context.mounted) {
                 Navigator.of(context).pop();
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -529,4 +506,3 @@ class _AdminPageState extends State<AdminPage> {
     );
   }
 }
-

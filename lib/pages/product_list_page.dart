@@ -22,11 +22,12 @@ import 'package:flutter_sandbox/models/ad.dart';
 import 'package:flutter_sandbox/providers/ad_provider.dart';
 import 'package:flutter_sandbox/pages/product_detail_page.dart';
 import 'package:flutter_sandbox/widgets/ad_card.dart';
+import 'package:flutter_sandbox/data/mock_products.dart';
 
 /// 상품 목록을 표시하는 페이지
 class ProductListPage extends StatefulWidget {
   final ProductCategory? initialCategory;
-  
+
   const ProductListPage({super.key, this.initialCategory});
 
   @override
@@ -57,136 +58,7 @@ class _ProductListPageState extends State<ProductListPage> {
   /// 상품 목록을 로드하는 메서드 (임시 데이터)
   void _loadProducts() {
     // 실제로는 API에서 데이터를 가져옵니다
-    _products = [
-      Product(
-        id: '1',
-        title: '아이폰 14 Pro 256GB',
-        description: '거의 새 제품입니다. 케이스와 액정보호필름 포함',
-        price: 800000,
-        imageUrls: ['lib/dummy_data/아이폰.jpeg'],
-        category: ProductCategory.digital,
-        status: ProductStatus.onSale,
-        sellerId: 'seller1',
-        sellerNickname: '김철수',
-        location: '역삼동',
-        createdAt: DateTime.now().subtract(const Duration(days: 1)),
-        updatedAt: DateTime.now().subtract(const Duration(days: 1)),
-        viewCount: 45,
-        likeCount: 12,
-      ),
-      Product(
-        id: '2',
-        title: '맥북 에어 M2 13인치',
-        description: '2023년 구매, 보증기간 남음',
-        price: 1200000,
-        imageUrls: ['lib/dummy_data/맥북.jpeg'],
-        category: ProductCategory.digital,
-        status: ProductStatus.onSale,
-        sellerId: 'seller2',
-        sellerNickname: '이영희',
-        location: '역삼동',
-        createdAt: DateTime.now().subtract(const Duration(days: 2)),
-        updatedAt: DateTime.now().subtract(const Duration(days: 2)),
-        viewCount: 78,
-        likeCount: 23,
-      ),
-      Product(
-        id: '3',
-        title: '나이키 에어포스',
-        description: '사이즈 270, 3번 정도만 신었습니다',
-        price: 80000,
-        imageUrls: ['lib/dummy_data/에어포스.jpeg'],
-        category: ProductCategory.sports,
-        status: ProductStatus.onSale,
-        sellerId: 'seller3',
-        sellerNickname: '박민수',
-        location: '역삼동',
-        createdAt: DateTime.now().subtract(const Duration(days: 3)),
-        updatedAt: DateTime.now().subtract(const Duration(days: 3)),
-        viewCount: 32,
-        likeCount: 8,
-      ),
-      Product(
-        id: '4',
-        title: '책상 의자 세트',
-        description: '이사로 인해 판매합니다. 상태 양호합니다',
-        price: 150000,
-        imageUrls: [],
-        category: ProductCategory.furniture,
-        status: ProductStatus.onSale,
-        sellerId: 'seller4',
-        sellerNickname: '최지영',
-        location: '강남구',
-        createdAt: DateTime.now().subtract(const Duration(days: 4)),
-        updatedAt: DateTime.now().subtract(const Duration(days: 4)),
-        viewCount: 56,
-        likeCount: 15,
-      ),
-      Product(
-        id: '5',
-        title: '유아용 장난감 세트',
-        description: '아이가 커서 사용하지 않아 판매합니다',
-        price: 50000,
-        imageUrls: [],
-        category: ProductCategory.kids,
-        status: ProductStatus.onSale,
-        sellerId: 'seller5',
-        sellerNickname: '정수진',
-        location: '서초동',
-        createdAt: DateTime.now().subtract(const Duration(days: 5)),
-        updatedAt: DateTime.now().subtract(const Duration(days: 5)),
-        viewCount: 28,
-        likeCount: 7,
-      ),
-      Product(
-        id: '6',
-        title: '강아지 사료 및 간식',
-        description: '포장 개봉하지 않은 새 제품입니다',
-        price: 30000,
-        imageUrls: [],
-        category: ProductCategory.pets,
-        status: ProductStatus.onSale,
-        sellerId: 'seller6',
-        sellerNickname: '김동욱',
-        location: '역삼동',
-        createdAt: DateTime.now().subtract(const Duration(days: 6)),
-        updatedAt: DateTime.now().subtract(const Duration(days: 6)),
-        viewCount: 41,
-        likeCount: 12,
-      ),
-      Product(
-        id: '7',
-        title: '자전거 판매',
-        description: '잘 타던 자전거입니다. A/S 받았습니다',
-        price: 200000,
-        imageUrls: [],
-        category: ProductCategory.sports,
-        status: ProductStatus.onSale,
-        sellerId: 'seller7',
-        sellerNickname: '이호진',
-        location: '송파구',
-        createdAt: DateTime.now().subtract(const Duration(days: 7)),
-        updatedAt: DateTime.now().subtract(const Duration(days: 7)),
-        viewCount: 89,
-        likeCount: 34,
-      ),
-      Product(
-        id: '8',
-        title: '여성 코트',
-        description: '사이즈 100, 2번 정도만 입었습니다',
-        price: 120000,
-        imageUrls: [],
-        category: ProductCategory.womenClothing,
-        status: ProductStatus.onSale,
-        sellerId: 'seller8',
-        sellerNickname: '한소희',
-        location: '강남구',
-        createdAt: DateTime.now().subtract(const Duration(days: 8)),
-        updatedAt: DateTime.now().subtract(const Duration(days: 8)),
-        viewCount: 67,
-        likeCount: 21,
-      ),
-    ];
+    _products = getMockProducts();
   }
 
   /// 필터링된 상품 목록을 반환하는 메서드
@@ -333,26 +205,25 @@ class _ProductListPageState extends State<ProductListPage> {
 
   /// 상품 목록과 광고를 병합한 리스트를 반환하는 메서드
   List<dynamic> _getMergedList(List<Product> products, List<Ad> ads) {
-    final mergedList = <dynamic>[];
-    
-    // 상품 목록을 복사
-    for (var product in products) {
-      mergedList.add(product);
+    if (products.length < 5) {
+      return List<dynamic>.from(products);
     }
-    
-    // 활성화된 광고를 position에 맞게 삽입
-    for (var ad in ads) {
-      if (ad.isActive && ad.position >= 0) {
-        // position이 상품 목록 범위 내인 경우에만 삽입
-        if (ad.position < mergedList.length) {
-          mergedList.insert(ad.position, ad);
-        } else {
-          // position이 범위를 벗어나면 끝에 추가
-          mergedList.add(ad);
-        }
+
+    final mergedList = <dynamic>[];
+    final activeAds = ads.where((ad) => ad.isActive).toList();
+    var adIndex = 0;
+
+    for (var i = 0; i < products.length; i++) {
+      mergedList.add(products[i]);
+
+      final shouldInsertAd = (i + 1) % 5 == 0 && adIndex < activeAds.length;
+
+      if (shouldInsertAd) {
+        mergedList.add(activeAds[adIndex]);
+        adIndex++;
       }
     }
-    
+
     return mergedList;
   }
 
@@ -364,13 +235,13 @@ class _ProductListPageState extends State<ProductListPage> {
           _filteredProducts,
           adProvider.activeAds,
         );
-        
+
         return ListView.builder(
           padding: const EdgeInsets.all(16),
           itemCount: mergedList.length,
           itemBuilder: (context, index) {
             final item = mergedList[index];
-            
+
             // 타입에 따라 Product 또는 Ad 렌더링
             if (item is Product) {
               return _buildProductItem(item);
@@ -717,19 +588,17 @@ class _ProductListPageState extends State<ProductListPage> {
   String _getCategoryText(ProductCategory category) {
     switch (category) {
       case ProductCategory.digital:
-        return '디지털기기';
-      case ProductCategory.furniture:
-        return '가구/인테리어';
-      case ProductCategory.kids:
-        return '유아동';
-      case ProductCategory.pets:
-        return '반려동물';
-      case ProductCategory.sports:
-        return '스포츠/레저';
-      case ProductCategory.womenClothing:
-        return '여성의류';
-      case ProductCategory.menClothing:
-        return '남성의류';
+        return '전자기기';
+      case ProductCategory.textbooks:
+        return '전공책';
+      case ProductCategory.daily:
+        return '생활용품';
+      case ProductCategory.housing:
+        return '가구/주거';
+      case ProductCategory.fashion:
+        return '패션/잡화';
+      case ProductCategory.hobby:
+        return '취미/레저';
       case ProductCategory.etc:
         return '기타';
     }

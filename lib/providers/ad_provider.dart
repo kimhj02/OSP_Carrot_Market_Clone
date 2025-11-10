@@ -58,7 +58,6 @@ class AdProvider with ChangeNotifier {
   void _subscribeToAds() {
     _adsSubscription = _firestore
         .collection('ads')
-        .orderBy('position')
         .snapshots()
         .listen(
           (snapshot) {

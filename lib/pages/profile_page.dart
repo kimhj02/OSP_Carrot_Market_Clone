@@ -24,6 +24,7 @@ import 'package:flutter_sandbox/models/product.dart';
 import 'package:flutter_sandbox/pages/product_detail_page.dart';
 import 'package:flutter_sandbox/services/admin_service.dart';
 import 'package:flutter_sandbox/pages/admin_page.dart';
+import 'package:flutter_sandbox/data/mock_products.dart';
 
 /// 사용자 프로필 페이지를 나타내는 위젯
 class ProfilePage extends StatefulWidget {
@@ -63,55 +64,11 @@ class _ProfilePageState extends State<ProfilePage>
   /// 내가 등록한 상품 목록을 로드하는 메서드 (임시 데이터)
   void _loadMyProducts() {
     // 실제로는 sellerId로 필터링하여 가져옵니다
+    final products = getMockProducts();
     _myProducts = [
-      Product(
-        id: '1',
-        title: '아이폰 14 Pro 256GB',
-        description: '거의 새 제품입니다. 케이스와 액정보호필름 포함',
-        price: 800000,
-        imageUrls: ['lib/dummy_data/아이폰.jpeg'],
-        category: ProductCategory.digital,
-        status: ProductStatus.onSale,
-        sellerId: 'seller1',
-        sellerNickname: '김철수',
-        location: '역삼동',
-        createdAt: DateTime.now().subtract(const Duration(days: 1)),
-        updatedAt: DateTime.now().subtract(const Duration(days: 1)),
-        viewCount: 45,
-        likeCount: 12,
-      ),
-      Product(
-        id: '2',
-        title: '맥북 에어 M2 13인치',
-        description: '2023년 구매, 보증기간 남음',
-        price: 1200000,
-        imageUrls: ['lib/dummy_data/맥북.jpeg'],
-        category: ProductCategory.digital,
-        status: ProductStatus.reserved,
-        sellerId: 'seller1',
-        sellerNickname: '김철수',
-        location: '역삼동',
-        createdAt: DateTime.now().subtract(const Duration(days: 2)),
-        updatedAt: DateTime.now().subtract(const Duration(days: 2)),
-        viewCount: 78,
-        likeCount: 23,
-      ),
-      Product(
-        id: '3',
-        title: '나이키 에어포스',
-        description: '사이즈 270, 3번 정도만 신었습니다',
-        price: 80000,
-        imageUrls: ['lib/dummy_data/에어포스.jpeg'],
-        category: ProductCategory.sports,
-        status: ProductStatus.sold,
-        sellerId: 'seller1',
-        sellerNickname: '김철수',
-        location: '역삼동',
-        createdAt: DateTime.now().subtract(const Duration(days: 3)),
-        updatedAt: DateTime.now().subtract(const Duration(days: 3)),
-        viewCount: 32,
-        likeCount: 8,
-      ),
+      products[0],
+      products[1].copyWith(status: ProductStatus.reserved),
+      products[2].copyWith(status: ProductStatus.sold),
     ];
   }
 
@@ -162,9 +119,7 @@ class _ProfilePageState extends State<ProfilePage>
                 if (isAdmin && mounted) {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(
-                      builder: (context) => const AdminPage(),
-                    ),
+                    MaterialPageRoute(builder: (context) => const AdminPage()),
                   );
                 } else {
                   if (mounted) {
