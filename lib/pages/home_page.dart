@@ -23,7 +23,7 @@ import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'package:flutter_sandbox/providers/kakao_login_provider.dart';
 import 'package:flutter_sandbox/providers/email_auth_provider.dart';
 import 'package:flutter_sandbox/pages/product_create_page.dart';
-import 'package:flutter_sandbox/pages/product_delete_page.dart';
+import 'package:flutter_sandbox/pages/group_buy_create_page.dart';
 import 'package:flutter_sandbox/pages/product_detail_page.dart';
 import 'package:flutter_sandbox/pages/chat_list_page.dart';
 import 'package:flutter_sandbox/pages/email_auth_page.dart';
@@ -49,6 +49,14 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int IndexedStackState = 0;
   ProductCategory? _selectedCategory;
+  OverlayEntry? _fabMenuOverlay;
+  bool _isFabMenuOpen = false;
+
+  @override
+  void dispose() {
+    _removeFabMenu(disposeOnly: true);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -68,12 +76,12 @@ class _HomePageState extends State<HomePage> {
           });
         }
 
-        return _buildScaffold(context);
+        return _buildScaffold(context, isLoggedIn);
       },
     );
   }
 
-  Widget _buildScaffold(BuildContext context) {
+  Widget _buildScaffold(BuildContext context, bool isLoggedIn) {
     return Scaffold(
       // 금오 마켓 스타일의 앱바
       appBar: AppBar(
@@ -223,6 +231,16 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
 
+      floatingActionButton: isLoggedIn
+          ? FloatingActionButton(
+              backgroundColor: Colors.teal,
+              onPressed: _toggleFabMenu,
+              child: Icon(
+                _isFabMenuOpen ? Icons.close : Icons.add,
+                color: Colors.white,
+              ),
+            )
+          : null,
       // 하단 네비게이션 바
       bottomNavigationBar: Consumer2<KakaoLoginProvider, EmailAuthProvider>(
         builder: (context, loginProvider, emailAuthProvider, child) {
@@ -264,6 +282,62 @@ class _HomePageState extends State<HomePage> {
         },
       ),
     );
+  }
+
+  void _toggleFabMenu() {
+    if (_isFabMenuOpen) {
+      _removeFabMenu();
+    } else {
+      _showFabMenu();
+    }
+  }
+
+  void _showFabMenu() {
+    final overlay = Overlay.of(context);
+
+    _fabMenuOverlay = OverlayEntry(
+      builder: (context) {
+        return _FabMenuOverlay(
+          onBackgroundTap: _removeFabMenu,
+          onProductTap: () {
+            _removeFabMenu();
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const ProductCreatePage(),
+              ),
+            );
+          },
+          onGroupBuyTap: () {
+            _removeFabMenu();
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const GroupBuyCreatePage(),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    overlay.insert(_fabMenuOverlay!);
+    setState(() {
+      _isFabMenuOpen = true;
+    });
+  }
+
+  void _removeFabMenu({bool disposeOnly = false}) {
+    if (!_isFabMenuOpen && !disposeOnly) return;
+    _fabMenuOverlay?.remove();
+    _fabMenuOverlay = null;
+    if (!disposeOnly && mounted) {
+      setState(() {
+        _isFabMenuOpen = false;
+      });
+    } else {
+      _isFabMenuOpen = false;
+    }
   }
 
   /// 금오 마켓 스타일의 로그인 화면을 생성하는 위젯
@@ -408,76 +482,6 @@ class _HomePageState extends State<HomePage> {
         children: [
           // 상품 목록 (임시 데이터)
           _buildProductList(),
-
-          const SizedBox(height: 24),
-
-          // 바로 가기 섹션 (상품 등록/삭제/채팅)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '바로 가기',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: SizedBox(
-                        height: 44,
-                        child: OutlinedButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const ProductCreatePage(),
-                              ),
-                            );
-                          },
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.teal,
-                            side: const BorderSide(color: Colors.teal),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          child: const Text('상품 등록'),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: SizedBox(
-                        height: 44,
-                        child: OutlinedButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const ProductDeletePage(),
-                              ),
-                            );
-                          },
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.redAccent,
-                            side: const BorderSide(color: Colors.redAccent),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          child: const Text('상품 삭제'),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                // 1:1 채팅 바로가기 버튼 제거됨
-              ],
-            ),
-          ),
         ],
       ),
     );
@@ -496,8 +500,13 @@ class _HomePageState extends State<HomePage> {
           // 전체 카테고리
           _buildCategoryChip('전체', null),
           const SizedBox(width: 8),
-          // 각 카테고리
-          ...ProductCategory.values.map(
+          // 같이사요 카테고리를 전체 바로 옆에 배치하고 나머지 카테고리 추가
+          ...[
+            ProductCategory.groupBuy,
+            ...ProductCategory.values.where(
+              (category) => category != ProductCategory.groupBuy,
+            ),
+          ].map(
             (category) => Padding(
               padding: const EdgeInsets.only(right: 8),
               child: _buildCategoryChip(_getCategoryText(category), category),
@@ -511,6 +520,28 @@ class _HomePageState extends State<HomePage> {
   /// 카테고리 칩을 생성하는 위젯
   Widget _buildCategoryChip(String label, ProductCategory? category) {
     final isSelected = _selectedCategory == category;
+    final isGroupBuy = category == ProductCategory.groupBuy;
+
+    final Color? backgroundColor;
+    final Color? textColor;
+    Border? borderStyle;
+
+    if (isGroupBuy) {
+      if (isSelected) {
+        backgroundColor = Colors.orange[100];
+        textColor = Colors.orange[800];
+        borderStyle = Border.all(color: Colors.orange[300]!, width: 1);
+      } else {
+        backgroundColor = Colors.orange[500];
+        textColor = Colors.white;
+      }
+    } else {
+      backgroundColor = isSelected ? Colors.white : Colors.grey[800];
+      textColor = isSelected ? Colors.black87 : Colors.white;
+      if (isSelected) {
+        borderStyle = Border.all(color: Colors.grey[300]!, width: 1);
+      }
+    }
 
     return GestureDetector(
       onTap: () {
@@ -522,16 +553,14 @@ class _HomePageState extends State<HomePage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white : Colors.grey[800],
+          color: backgroundColor,
           borderRadius: BorderRadius.circular(20),
-          border: isSelected
-              ? Border.all(color: Colors.grey[300]!, width: 1)
-              : null,
+          border: borderStyle,
         ),
         child: Text(
           label,
           style: TextStyle(
-            color: isSelected ? Colors.black87 : Colors.white,
+            color: textColor,
             fontSize: 14,
             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
           ),
@@ -557,6 +586,8 @@ class _HomePageState extends State<HomePage> {
         return '취미/레저';
       case ProductCategory.etc:
         return '기타';
+      case ProductCategory.groupBuy:
+        return '같이사요';
     }
   }
 
@@ -768,6 +799,154 @@ class _HomePageState extends State<HomePage> {
           },
         );
       },
+    );
+  }
+
+}
+
+class _FabMenuOverlay extends StatelessWidget {
+  const _FabMenuOverlay({
+    required this.onBackgroundTap,
+    required this.onProductTap,
+    required this.onGroupBuyTap,
+  });
+
+  final VoidCallback onBackgroundTap;
+  final VoidCallback onProductTap;
+  final VoidCallback onGroupBuyTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final double bottomOffset =
+        kBottomNavigationBarHeight + MediaQuery.of(context).padding.bottom + 24;
+
+    return Material(
+      color: Colors.black45,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: onBackgroundTap,
+              behavior: HitTestBehavior.opaque,
+            ),
+          ),
+          Positioned(
+            right: 16,
+            bottom: bottomOffset,
+            child: _FabMenuPanel(
+              onClose: onBackgroundTap,
+              onProductTap: onProductTap,
+              onGroupBuyTap: onGroupBuyTap,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FabMenuPanel extends StatelessWidget {
+  const _FabMenuPanel({
+    required this.onClose,
+    required this.onProductTap,
+    required this.onGroupBuyTap,
+  });
+
+  final VoidCallback onClose;
+  final VoidCallback onProductTap;
+  final VoidCallback onGroupBuyTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        _FabMenuItem(
+          icon: Icons.storefront,
+          iconColor: Colors.teal,
+          title: '중고 상품 등록',
+          onTap: onProductTap,
+        ),
+        const SizedBox(height: 12),
+        _FabMenuItem(
+          icon: Icons.group_add,
+          iconColor: Colors.orange,
+          title: '같이사요 모집',
+          onTap: onGroupBuyTap,
+        ),
+        const SizedBox(height: 16),
+        FloatingActionButton.small(
+          heroTag: 'fabMenuClose',
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.grey[800],
+          onPressed: onClose,
+          child: const Icon(Icons.close),
+        ),
+      ],
+    );
+  }
+}
+
+class _FabMenuItem extends StatelessWidget {
+  const _FabMenuItem({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 240,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.grey[900],
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.25),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: iconColor.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: iconColor, size: 22),
+            ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

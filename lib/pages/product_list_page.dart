@@ -601,6 +601,8 @@ class _ProductListPageState extends State<ProductListPage> {
         return '취미/레저';
       case ProductCategory.etc:
         return '기타';
+      case ProductCategory.groupBuy:
+        return '같이사요';
     }
   }
 

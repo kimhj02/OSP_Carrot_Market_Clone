@@ -23,7 +23,9 @@ import 'package:flutter_sandbox/pages/chat_page.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-
+enum _ProductMoreAction {
+  delete,
+}
 
 /// 상품 상세 정보를 표시하는 페이지
 class ProductDetailPage extends StatefulWidget {
@@ -52,6 +54,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   bool _isLiked = false;      /// 찜하기 상태
   bool _isSending = false;  /// 메시지 전송 상태
   bool _hasText = false;  /// 입력창의 텍스트 여부
+  bool _isDeleting = false; /// 상품 삭제 진행 상태
 
   @override
   void initState() {
@@ -103,10 +106,40 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
               );
             },
           ),
-          IconButton(
+          PopupMenuButton<_ProductMoreAction>(
             icon: const Icon(Icons.more_vert, color: Colors.black),
-            onPressed: () {
-              // 더보기 메뉴 (향후 구현)
+            enabled: !_isDeleting,
+            onSelected: (action) {
+              switch (action) {
+                case _ProductMoreAction.delete:
+                  _confirmDeleteProduct();
+                  break;
+              }
+            },
+            itemBuilder: (context) {
+              final entries = <PopupMenuEntry<_ProductMoreAction>>[];
+              if (_canDeleteProduct) {
+                entries.add(
+                  PopupMenuItem<_ProductMoreAction>(
+                    value: _ProductMoreAction.delete,
+                    child: Row(
+                      children: const [
+                        Icon(Icons.delete_outline, color: Colors.redAccent),
+                        SizedBox(width: 12),
+                        Text('상품 삭제'),
+                      ],
+                    ),
+                  ),
+                );
+              } else {
+                entries.add(
+                  const PopupMenuItem<_ProductMoreAction>(
+                    enabled: false,
+                    child: Text('삭제 권한이 없습니다'),
+                  ),
+                );
+              }
+              return entries;
             },
           ),
         ],
@@ -703,6 +736,86 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       _isLiked = !_isLiked;
     });
     _showSnackBar(_isLiked ? '찜 목록에 추가했습니다' : '찜을 취소했습니다');
+  }
+
+  bool get _canDeleteProduct {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return false;
+    return currentUser.uid == widget.product.sellerId;
+  }
+
+  Future<void> _confirmDeleteProduct() async {
+    if (!_canDeleteProduct) {
+      _showSnackBar('삭제 권한이 없습니다');
+      return;
+    }
+
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('상품 삭제'),
+          content: const Text('해당 상품을 정말 삭제하시겠습니까? 삭제 후에는 복구할 수 없습니다.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('취소'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+              child: const Text('삭제'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldDelete != true) {
+      return;
+    }
+
+    await _deleteProduct();
+  }
+
+  Future<void> _deleteProduct() async {
+    if (_isDeleting) return;
+
+    setState(() {
+      _isDeleting = true;
+    });
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('products')
+          .doc(widget.product.id)
+          .delete();
+
+      if (!mounted) return;
+      _showSnackBar('상품을 삭제했습니다');
+      Navigator.pop(context, true);
+    } on FirebaseException catch (e) {
+      final message = e.message ?? '알 수 없는 오류가 발생했습니다';
+      if (kDebugMode) {
+        debugPrint('❌ 상품 삭제 실패: $message');
+      }
+      if (mounted) {
+        _showSnackBar('상품 삭제에 실패했습니다: $message');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ 상품 삭제 실패: $e');
+      }
+      if (mounted) {
+        _showSnackBar('상품 삭제에 실패했습니다. 다시 시도해주세요.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDeleting = false;
+        });
+      }
+    }
   }
 
 }

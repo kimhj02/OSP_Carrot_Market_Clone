@@ -41,6 +41,9 @@ enum ProductCategory {
 
   /// 기타
   etc,
+
+  /// 같이사요 (공동구매/합배송)
+  groupBuy,
 }
 
 /// 당근 마켓 상품 모델 클래스
@@ -201,6 +204,8 @@ class Product {
         return '취미/레저';
       case ProductCategory.etc:
         return '기타';
+      case ProductCategory.groupBuy:
+        return '같이사요';
     }
   }
 

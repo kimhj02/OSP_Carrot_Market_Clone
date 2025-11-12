@@ -173,5 +173,27 @@ List<Product> getMockProducts() {
       x: 37.4979,
       y: 127.0276,
     ),
+    Product(
+      id: '9',
+      title: '콜라 1.5L 4개 같이 사요',
+      description:
+          '혼자 사기엔 너무 많아서 같이 주문할 분을 찾습니다. 역삼동에서 픽업 예정!',
+      price: 12000,
+      imageUrls: ['lib/dummy_data/에어포스.jpeg'],
+      category: ProductCategory.groupBuy,
+      status: ProductStatus.onSale,
+      sellerId: 'seller9',
+      sellerNickname: '함께해요',
+      sellerProfileImageUrl:
+          'https://cdn.pixabay.com/photo/2018/03/06/22/32/emoji-3202669_1280.png',
+      location: '서울 강남구 역삼동',
+      createdAt: now.subtract(const Duration(hours: 2)),
+      updatedAt: now,
+      viewCount: 12,
+      likeCount: 4,
+      isLiked: false,
+      x: 37.4979,
+      y: 127.0276,
+    ),
   ];
 }
