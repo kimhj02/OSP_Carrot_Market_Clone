@@ -168,8 +168,16 @@ class _MapScreenState extends State<MapScreen> {
       _currentPosition = isBack? kumoh : LatLng(position.latitude, position.longitude);
     });
 
+    if (_currentPosition == null) return;
+
+
     _mapController?.animateCamera(
-      CameraUpdate.newLatLng(_currentPosition!),
+      CameraUpdate.newCameraPosition(
+         CameraPosition(
+          target: _currentPosition!,
+          zoom: 17,   // 👍 여기 확대값 적용
+        ),
+      ),
     );
 
     if(isBack){
