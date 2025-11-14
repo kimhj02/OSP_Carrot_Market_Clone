@@ -11,17 +11,16 @@
 /// @since 2024-01-01
 
 import 'package:flutter/material.dart';
-import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart' hide EmailAuthProvider;
 import 'package:provider/provider.dart';
-
 import 'package:flutter_sandbox/firebase_options.dart';
-import 'package:flutter_sandbox/config/api_keys.dart';
 import 'package:flutter_sandbox/providers/kakao_login_provider.dart';
 import 'package:flutter_sandbox/providers/email_auth_provider.dart';
 import 'package:flutter_sandbox/providers/ad_provider.dart';
 import 'package:flutter_sandbox/pages/home_page.dart';
-
+import 'package:flutter_sandbox/pages/verify_email_page.dart';
+import 'package:flutter_sandbox/pages/email_auth_page.dart';
 /// 앱의 메인 진입점
 ///
 /// Flutter 앱이 시작될 때 가장 먼저 실행되는 함수입니다.
@@ -50,17 +49,6 @@ Future<void> main() async {
       print('⚠️ Firebase 초기화 실패: $e');
     }
   }
-
-  // 카카오 SDK를 초기화합니다.
-  // 네이티브 앱 키와 자바스크립트 앱 키를 설정합니다.
-  // API 키는 lib/config/api_keys.dart 파일에서 관리됩니다.
-  // (api_keys.dart는 .gitignore에 포함되어 Git에 올라가지 않습니다)
-
-  KakaoSdk.init(
-    nativeAppKey: ApiKeys.kakaoNativeAppKey,
-    javaScriptAppKey: ApiKeys.kakaoJavaScriptAppKey,
-    //restApiKey: ApiKeys.kakaoRestApiKey, // 필요시 주석 해제
-  );
 
   // 앱을 실행합니다.
   // MultiProvider를 사용하여 여러 Provider를 앱 전체에 제공합니다.
@@ -91,7 +79,33 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
         useMaterial3: true,
       ), // 기본 테마 (청록색 기반)
-      home: const HomePage(), // 홈 화면으로 HomePage 설정
+      home: const AuthCheck(),
     );
+  }
+}
+/// 로그인 상태에 따라 화면 흐름제어
+class AuthCheck extends StatelessWidget {
+  const AuthCheck({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+
+    final User? user = context.watch<EmailAuthProvider>().user;
+
+    /// 로그아웃 상태
+    if (user == null) {
+      return const EmailAuthPage();
+    }
+    /// 로그인 상태
+    else {
+      /// 메일 인증 여부 확인
+      if (user.emailVerified) {
+        /// 인증 완료 시 메인 홈 페이지
+        return const HomePage();
+      } else {
+        /// 인증 미완료 시 이메일 인증 대기 페이지
+        return const VerifyEmailPage();
+      }
+    }
   }
 }

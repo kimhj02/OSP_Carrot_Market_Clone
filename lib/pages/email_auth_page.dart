@@ -16,7 +16,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_sandbox/providers/email_auth_provider.dart';
-
+import 'package:flutter_sandbox/data/school_domains.dart';
 /// 이메일 인증 화면 위젯
 ///
 /// 로그인과 회원가입을 모두 처리하는 화면입니다.
@@ -60,6 +60,7 @@ class _EmailAuthPageState extends State<EmailAuthPage> {
     final emailAuthProvider = Provider.of<EmailAuthProvider>(context, listen: false);
     String? errorMessage;
 
+    ///로그인
     if (_isSignIn) {
       errorMessage = await emailAuthProvider.login(
         _emailController.text,
@@ -67,18 +68,20 @@ class _EmailAuthPageState extends State<EmailAuthPage> {
       );
       if (errorMessage == null) {
         _showSnackBar('로그인 성공!');
-        if (mounted) Navigator.of(context).pop();
       } else {
         _showSnackBar(errorMessage);
       }
-    } else {
+    }
+
+    ///회원가입
+    else {
       errorMessage = await emailAuthProvider.signUp(
         _emailController.text,
         _passwordController.text,
       );
       if (errorMessage == null) {
-        _showSnackBar('회원가입 성공!');
-        if (mounted) Navigator.of(context).pop();
+        _showSnackBar('회원가입 성공! 이메일을 확인해주세요.');
+
       } else {
         _showSnackBar(errorMessage);
       }
@@ -123,7 +126,7 @@ class _EmailAuthPageState extends State<EmailAuthPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // 로고 영역
+                  /// 로고 영역
                   const SizedBox(height: 32),
                   Center(
                     child: Container(
@@ -142,7 +145,7 @@ class _EmailAuthPageState extends State<EmailAuthPage> {
                   ),
                   const SizedBox(height: 32),
 
-                  // 이메일 입력 필드
+                  /// 이메일 입력 필드
                   TextFormField(
                     controller: _emailController,
                     decoration: _inputDecoration('이메일'),
@@ -155,12 +158,22 @@ class _EmailAuthPageState extends State<EmailAuthPage> {
                       if (!value.contains('@')) {
                         return '올바른 이메일 형식을 입력해주세요';
                       }
+
+                      /// 회원가입 모드일 때
+                      if (!_isSignIn) {
+                        final lowercasedValue = value.trim().toLowerCase();
+                        if (!schoolDomains.any(
+                              (domain) => lowercasedValue.endsWith(domain),
+                        )) {
+                          return '허용된 학교 이메일이 아닙니다.';
+                        }
+                      }
                       return null;
                     },
                   ),
                   const SizedBox(height: 16),
 
-                  // 비밀번호 입력 필드
+                  /// 비밀번호 입력 필드
                   TextFormField(
                     controller: _passwordController,
                     decoration: _inputDecoration(
@@ -193,7 +206,7 @@ class _EmailAuthPageState extends State<EmailAuthPage> {
                   ),
                   const SizedBox(height: 24),
 
-                  // 로그인/회원가입 버튼
+                  /// 로그인/회원가입 버튼
                   SizedBox(
                     height: 56,
                     child: ElevatedButton(
@@ -226,7 +239,7 @@ class _EmailAuthPageState extends State<EmailAuthPage> {
                   ),
                   const SizedBox(height: 16),
 
-                  // 로그인/회원가입 전환 버튼
+                  /// 로그인/회원가입 전환 버튼
                   TextButton(
                     onPressed: authProvider.loading
                         ? null

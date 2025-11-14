@@ -46,7 +46,8 @@ class EmailAuthProvider with ChangeNotifier {
 
   /// 생성자 - Firebase Auth 상태 변화 리스너 등록
   EmailAuthProvider() {
-    _auth.authStateChanges().listen((User? user) {
+    /// userChanges() 감지
+    _auth.userChanges().listen((User? user) {
       _user = user;
       notifyListeners();
     });
@@ -61,17 +62,21 @@ class EmailAuthProvider with ChangeNotifier {
   /// Returns:
   /// - [String?]: 성공 시 null, 실패 시 에러 메시지
   Future<String?> login(String email, String password) async {
-    setState(loading: true, errorMessage: null);
+    setState(loading: true, resetError: true);
     try {
-      await _auth.signInWithEmailAndPassword(
-        email: email.trim(),
-        password: password,
-      ).timeout(
-        const Duration(seconds: 15),
-        onTimeout: () {
-          throw TimeoutException('로그인 요청 시간 초과');
-        },
-      );
+      /// 로그인 시도
+      await _auth
+          .signInWithEmailAndPassword(email: email.trim(), password: password)
+          .timeout(
+            const Duration(seconds: 15),
+            onTimeout: () {
+              throw TimeoutException('로그인 요청 시간 초과');
+            },
+          );
+
+      /// emailVerified 검사, signOut, 에러 반환 로직을 모두 제거
+      /// 로그인 시도에 성공하면 이후 과정은 AuthCheck가 처리함
+      /// 로그인 시도만 처리함
       return null;
     } on TimeoutException {
       final errorMsg = '네트워크 연결이 불안정합니다. 인터넷 연결을 확인하고 다시 시도해주세요.';
@@ -101,15 +106,27 @@ class EmailAuthProvider with ChangeNotifier {
   Future<String?> signUp(String email, String password) async {
     setState(loading: true, errorMessage: null);
     try {
-      await _auth.createUserWithEmailAndPassword(
-        email: email.trim(),
-        password: password,
-      ).timeout(
-        const Duration(seconds: 15),
-        onTimeout: () {
-          throw TimeoutException('회원가입 요청 시간 초과');
-        },
-      );
+      final userCredential = await _auth
+          .createUserWithEmailAndPassword(
+            email: email.trim(),
+            password: password,
+          )
+          .timeout(
+            const Duration(seconds: 15),
+            onTimeout: () {
+              throw TimeoutException('회원가입 요청 시간 초과');
+            },
+          );
+
+      User? user = userCredential.user;
+      if (user != null && !user.emailVerified) {
+        try {
+          await user.sendEmailVerification();
+          debugPrint('인증 이메일 발송 성공: ${user.email}');
+        } catch (e) {
+          debugPrint('인증 이메일 발송 실패: $e');
+        }
+      }
       return null;
     } on TimeoutException {
       final errorMsg = '네트워크 연결이 불안정합니다. 인터넷 연결을 확인하고 다시 시도해주세요.';
@@ -128,9 +145,8 @@ class EmailAuthProvider with ChangeNotifier {
     }
   }
 
-  /// 로그아웃을 수행합니다.
-  ///
-  /// 사용자 정보를 초기화한 후 UI에 변경사항을 알립니다.
+  /// 로그아웃을 수행
+  /// 사용자 정보를 초기화한 후 UI에 변경사항을 알림
   Future<void> logout() async {
     await _auth.signOut();
     _user = null;
@@ -138,15 +154,28 @@ class EmailAuthProvider with ChangeNotifier {
   }
 
   /// 상태를 업데이트하는 헬퍼 메서드
-  void setState({bool? loading, String? errorMessage}) {
-    if (loading != null) _loading = loading;
-    if (errorMessage != null) _errorMessage = errorMessage;
+  void setState({
+    bool? loading,
+    bool resetError = false,
+    String? errorMessage,
+  }) {
+    if (loading != null) {
+      _loading = loading;
+    }
+    if (resetError) {
+      _errorMessage = null;
+    }
+    if (errorMessage != null) {
+      _errorMessage = errorMessage;
+    }
     notifyListeners();
   }
 
-  /// Firebase Auth 에러 코드를 한글 메시지로 변환합니다.
+  /// Firebase Auth 에러 코드를 한글 메시지로 변환
   String _getErrorMessage(String code) {
     switch (code) {
+      case 'invalid-credential':
+        return '이메일 또는 비밀번호가 올바르지 않습니다.';
       case 'invalid-email':
         return '이메일 형식이 올바르지 않습니다';
       case 'user-not-found':
