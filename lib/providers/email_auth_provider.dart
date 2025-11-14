@@ -62,24 +62,22 @@ class EmailAuthProvider with ChangeNotifier {
   /// Returns:
   /// - [String?]: 성공 시 null, 실패 시 에러 메시지
   Future<String?> login(String email, String password) async {
-    setState(loading: true, errorMessage: null);
+    setState(loading: true, resetError: true);
     try {
       /// 로그인 시도
-      await _auth.signInWithEmailAndPassword(
-        email: email.trim(),
-        password: password,
-      ).timeout(
-        const Duration(seconds: 15),
-        onTimeout: () {
-          throw TimeoutException('로그인 요청 시간 초과');
-        },
-      );
+      await _auth
+          .signInWithEmailAndPassword(email: email.trim(), password: password)
+          .timeout(
+            const Duration(seconds: 15),
+            onTimeout: () {
+              throw TimeoutException('로그인 요청 시간 초과');
+            },
+          );
 
       /// emailVerified 검사, signOut, 에러 반환 로직을 모두 제거
       /// 로그인 시도에 성공하면 이후 과정은 AuthCheck가 처리함
       /// 로그인 시도만 처리함
       return null;
-
     } on TimeoutException {
       final errorMsg = '네트워크 연결이 불안정합니다. 인터넷 연결을 확인하고 다시 시도해주세요.';
       setState(errorMessage: errorMsg);
@@ -127,7 +125,6 @@ class EmailAuthProvider with ChangeNotifier {
           debugPrint('인증 이메일 발송 성공: ${user.email}');
         } catch (e) {
           debugPrint('인증 이메일 발송 실패: $e');
-
         }
       }
       return null;
@@ -157,9 +154,20 @@ class EmailAuthProvider with ChangeNotifier {
   }
 
   /// 상태를 업데이트하는 헬퍼 메서드
-  void setState({bool? loading, String? errorMessage}) {
-    if (loading != null) _loading = loading;
-    if (errorMessage != null) _errorMessage = errorMessage;
+  void setState({
+    bool? loading,
+    bool resetError = false,
+    String? errorMessage,
+  }) {
+    if (loading != null) {
+      _loading = loading;
+    }
+    if (resetError) {
+      _errorMessage = null;
+    }
+    if (errorMessage != null) {
+      _errorMessage = errorMessage;
+    }
     notifyListeners();
   }
 
