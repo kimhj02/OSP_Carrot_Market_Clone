@@ -15,6 +15,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart' hide EmailAuthProvider;
 import 'package:provider/provider.dart';
 import 'package:flutter_sandbox/firebase_options.dart';
+import 'package:flutter_sandbox/providers/kakao_login_provider.dart';
 import 'package:flutter_sandbox/providers/email_auth_provider.dart';
 import 'package:flutter_sandbox/providers/ad_provider.dart';
 import 'package:flutter_sandbox/pages/home_page.dart';
@@ -54,6 +55,7 @@ Future<void> main() async {
   runApp(
     MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (context) => KakaoLoginProvider()),
         ChangeNotifierProvider(create: (context) => EmailAuthProvider()),
         ChangeNotifierProvider(create: (context) => AdProvider()),
       ],
@@ -81,8 +83,7 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-
-/// 로그인 상태에 따라 화면 흐름을 제어
+/// 로그인 상태에 따라 화면 흐름제어
 class AuthCheck extends StatelessWidget {
   const AuthCheck({super.key});
 
