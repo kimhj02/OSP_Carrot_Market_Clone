@@ -163,18 +163,10 @@ class FCMService {
         return;
       }
 
-      // FCM을 통해 알림 전송
-      // 주의: 실제 프로덕션에서는 Cloud Functions를 사용하는 것이 권장됩니다
-      // 여기서는 클라이언트 측에서 직접 전송 (제한적)
-      // Cloud Functions를 사용하려면 서버 측 코드가 필요합니다
-
-      debugPrint('📤 알림 전송 시도: $recipientFcmToken');
-      
-      // 실제로는 Cloud Functions의 sendNotification 함수를 호출해야 합니다
-      // 여기서는 Firestore에 알림 요청을 저장하고 Cloud Functions가 처리하도록 할 수 있습니다
-      // 또는 직접 HTTP 요청으로 FCM API를 호출할 수 있습니다 (서버 키 필요)
-
-      // 임시로 Firestore에 알림 요청 저장 (Cloud Functions가 처리하도록)
+      // Firestore에 알림 요청 저장
+      // Cloud Functions의 sendChatNotification 함수가 자동으로 트리거되어
+      // FCM을 통해 실제 푸시 알림을 전송합니다.
+      debugPrint('📤 알림 요청 저장: $recipientFcmToken');
       await FirebaseFirestore.instance
           .collection('notificationRequests')
           .add({
