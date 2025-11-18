@@ -349,14 +349,14 @@ class _HomePageState extends State<HomePage> {
   }
 
   String _resolveLocationLabel(AppUserProfile user) {
-    if (!AppConfig.useFirebase) {
-      final universityName =
-          LocalAppRepository.instance.getUniversityName(user.universityId);
-      if (universityName != null && universityName.isNotEmpty) {
-        return universityName;
-      }
+    // 학교 이름만 표시
+    final universityName =
+        LocalAppRepository.instance.getUniversityName(user.universityId);
+    if (universityName != null && universityName.isNotEmpty) {
+      return universityName;
     }
-    return user.region.name;
+    // 학교 정보가 없으면 기본값
+    return '대표 동네 미설정';
   }
 
   Future<bool> _handleLocationPermission() async {

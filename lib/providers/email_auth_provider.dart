@@ -16,6 +16,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart' hide EmailAuthProvider;
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_sandbox/config/app_config.dart';
 import 'package:flutter_sandbox/models/firestore_schema.dart';
 import 'package:flutter_sandbox/services/local_app_repository.dart';
@@ -53,9 +54,51 @@ class EmailAuthProvider with ChangeNotifier {
   EmailAuthProvider() {
     if (AppConfig.useFirebase) {
       _auth = FirebaseAuth.instance;
-      _firebaseSubscription = _auth!.userChanges().listen((User? user) {
-        _user = user == null ? null : _mapFirebaseUser(user);
-        notifyListeners();
+      _firebaseSubscription = _auth!.userChanges().listen((User? user) async {
+        if (user == null) {
+          _user = null;
+          notifyListeners();
+        } else {
+          // Firestore에서 사용자 정보 가져오기
+          try {
+            final userDoc = await FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid)
+                .get();
+            
+            if (userDoc.exists) {
+              final data = userDoc.data()!;
+              final regionData = data['region'] as Map<String, dynamic>?;
+              _user = AppUserProfile(
+                uid: user.uid,
+                displayName: data['name'] as String? ?? user.displayName ?? (user.email ?? '사용자'),
+                email: user.email ?? '',
+                region: regionData != null ? Region(
+                  code: regionData['code'] as String? ?? '',
+                  name: regionData['name'] as String? ?? '',
+                  level: (regionData['level'] as int?)?.toString() ?? 
+                         regionData['level'] as String? ?? 'unknown',
+                  parent: regionData['parent'] as String?,
+                ) : _getDefaultRegionFromEmail(user.email ?? ''),
+                universityId: data['universityId'] as String? ?? 
+                             _localRepo.getUniversityCodeByEmailDomain(user.email ?? '') ?? 
+                             'UNKNOWN',
+                emailVerified: user.emailVerified,
+                createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? 
+                           (user.metadata.creationTime ?? DateTime.now()),
+                photoUrl: user.photoURL ?? data['photoUrl'] as String?,
+              );
+            } else {
+              // Firestore에 정보가 없으면 이메일 도메인으로부터 추론
+              _user = _mapFirebaseUser(user);
+            }
+          } catch (e) {
+            debugPrint('사용자 정보 로드 실패: $e');
+            // 실패 시 이메일 도메인으로부터 추론
+            _user = _mapFirebaseUser(user);
+          }
+          notifyListeners();
+        }
       });
     } else {
       _localSubscription =
@@ -64,6 +107,18 @@ class EmailAuthProvider with ChangeNotifier {
         notifyListeners();
       });
     }
+  }
+
+  /// 이메일로부터 기본 지역을 가져옵니다
+  Region _getDefaultRegionFromEmail(String email) {
+    final universityCode = _localRepo.getUniversityCodeByEmailDomain(email);
+    if (universityCode != null) {
+      final region = _localRepo.getDefaultRegionByUniversity(universityCode);
+      if (region != null) {
+        return region;
+      }
+    }
+    return defaultRegion;
   }
 
   /// 이메일과 비밀번호로 로그인합니다.
@@ -140,12 +195,44 @@ class EmailAuthProvider with ChangeNotifier {
             );
 
         final user = userCredential.user;
-        if (user != null && !user.emailVerified) {
+        if (user != null) {
+          // Firestore에 사용자 정보 저장 (학교 정보 포함)
           try {
-            await user.sendEmailVerification();
-            debugPrint('인증 이메일 발송 성공: ${user.email}');
+            final email = user.email ?? '';
+            final universityCode = _localRepo.getUniversityCodeByEmailDomain(email);
+            final region = universityCode != null
+                ? _localRepo.getDefaultRegionByUniversity(universityCode)
+                : null;
+            
+            await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+              'uid': user.uid,
+              'email': email,
+              'name': user.displayName ?? email.split('@').first,
+              'photoUrl': user.photoURL,
+              'universityId': universityCode ?? 'UNKNOWN',
+              'region': region != null ? {
+                'code': region.code,
+                'name': region.name,
+                'level': region.level,
+                'parent': region.parent,
+              } : null,
+              'emailVerified': user.emailVerified,
+              'createdAt': FieldValue.serverTimestamp(),
+              'updatedAt': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
+            
+            debugPrint('사용자 정보 저장 성공: ${user.email}, 학교: $universityCode');
           } catch (e) {
-            debugPrint('인증 이메일 발송 실패: $e');
+            debugPrint('사용자 정보 저장 실패: $e');
+          }
+          
+          if (!user.emailVerified) {
+            try {
+              await user.sendEmailVerification();
+              debugPrint('인증 이메일 발송 성공: ${user.email}');
+            } catch (e) {
+              debugPrint('인증 이메일 발송 실패: $e');
+            }
           }
         }
         return null;
@@ -231,16 +318,38 @@ class EmailAuthProvider with ChangeNotifier {
   }
 
   AppUserProfile _mapFirebaseUser(User user) {
-    return AppUserProfile(
-      uid: user.uid,
-      displayName: user.displayName ?? (user.email ?? '사용자'),
-      email: user.email ?? '',
-      region: defaultRegion,
-      universityId: 'UNKNOWN',
-      emailVerified: user.emailVerified,
-      createdAt: user.metadata.creationTime ?? DateTime.now(),
-      photoUrl: user.photoURL,
-    );
+    // Firestore에서 사용자 정보 가져오기
+    if (AppConfig.useFirebase) {
+      // 비동기적으로 Firestore에서 정보를 가져오지만,
+      // 동기적으로 반환해야 하므로 기본값 사용 후 업데이트
+      final email = user.email ?? '';
+      final universityCode = _localRepo.getUniversityCodeByEmailDomain(email);
+      final region = universityCode != null
+          ? _localRepo.getDefaultRegionByUniversity(universityCode)
+          : defaultRegion;
+      
+      return AppUserProfile(
+        uid: user.uid,
+        displayName: user.displayName ?? (email.split('@').first),
+        email: email,
+        region: region ?? defaultRegion,
+        universityId: universityCode ?? 'UNKNOWN',
+        emailVerified: user.emailVerified,
+        createdAt: user.metadata.creationTime ?? DateTime.now(),
+        photoUrl: user.photoURL,
+      );
+    } else {
+      return AppUserProfile(
+        uid: user.uid,
+        displayName: user.displayName ?? (user.email ?? '사용자'),
+        email: user.email ?? '',
+        region: defaultRegion,
+        universityId: 'UNKNOWN',
+        emailVerified: user.emailVerified,
+        createdAt: user.metadata.creationTime ?? DateTime.now(),
+        photoUrl: user.photoURL,
+      );
+    }
   }
 
   @override

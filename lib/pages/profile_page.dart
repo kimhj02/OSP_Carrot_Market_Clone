@@ -319,7 +319,6 @@ class _ProfilePageState extends State<ProfilePage>
         stream: FirebaseFirestore.instance
             .collection('products')
             .where('sellerUid', isEqualTo: currentUser.uid)
-            .orderBy('createdAt', descending: true)
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -335,6 +334,9 @@ class _ProfilePageState extends State<ProfilePage>
             return _firestoreDocToProduct(doc.id, data, currentUser.uid);
           }).toList() ?? [];
           
+          // 최신순으로 정렬 (클라이언트 측)
+          allProducts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          
           // 찜한 상품도 가져오기 (찜한 상품 탭용)
           return StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
@@ -346,6 +348,9 @@ class _ProfilePageState extends State<ProfilePage>
                 final data = doc.data() as Map<String, dynamic>;
                 return _firestoreDocToProduct(doc.id, data, currentUser.uid);
               }).toList() ?? [];
+              
+              // 최신순으로 정렬 (클라이언트 측)
+              likedProducts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
               
               // 모든 상품 합치기 (내 상품 + 찜한 상품)
               final allProductsWithLiked = [

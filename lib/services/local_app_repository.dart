@@ -69,6 +69,40 @@ class LocalAppRepository {
 
   String? getUniversityName(String code) => _universities[code]?.name;
 
+  /// 이메일 도메인으로부터 학교 정보를 찾습니다
+  University? getUniversityByEmailDomain(String email) {
+    final domain = email.split('@').last.toLowerCase();
+    return _universities.values.firstWhere(
+      (university) => university.emailDomains.any(
+        (emailDomain) => domain == emailDomain.toLowerCase(),
+      ),
+      orElse: () => throw StateError('학교를 찾을 수 없습니다'),
+    );
+  }
+
+  /// 이메일 도메인으로부터 학교 코드를 찾습니다
+  String? getUniversityCodeByEmailDomain(String email) {
+    try {
+      return getUniversityByEmailDomain(email)?.code;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// 학교 위치로부터 기본 지역을 반환합니다
+  Region? getDefaultRegionByUniversity(String universityCode) {
+    final university = _universities[universityCode];
+    if (university == null) return null;
+    
+    // 금오공대의 경우 구미시 인동동
+    if (universityCode == 'KUMOH') {
+      return _regions['KR-47-구미시-인동동'];
+    }
+    
+    // 기본적으로 첫 번째 지역 반환
+    return _regions.values.isNotEmpty ? _regions.values.first : null;
+  }
+
   /// 위도/경도로 실제 속한 지역을 찾습니다
   /// 각 지역의 경계를 체크하여 정확한 동 이름을 반환합니다
   String getRegionNameByLocation(double latitude, double longitude) {

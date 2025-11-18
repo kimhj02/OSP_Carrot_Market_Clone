@@ -260,7 +260,6 @@ class _ChatListPageState extends State<ChatListPage> {
         stream: FirebaseFirestore.instance
             .collection('chatRooms')
             .where('participants', arrayContains: currentUserId)
-            .orderBy('lastMessageTime', descending: true)
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
