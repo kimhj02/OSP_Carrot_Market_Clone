@@ -11,7 +11,9 @@ import 'package:flutter_sandbox/pages/product_detail_page.dart';
 import 'package:flutter_sandbox/services/local_app_repository.dart';
 
 class MapScreen extends StatefulWidget {
-  const MapScreen({Key? key}) : super(key: key);
+  final bool moveToCurrentLocationOnInit;
+  
+  const MapScreen({Key? key, this.moveToCurrentLocationOnInit = false}) : super(key: key);
 
   @override
   State<MapScreen> createState() => _MapScreenState();
@@ -31,17 +33,20 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
-    _getUniversityLocation();
-    _refreshListings(kumoh);
-  }
-
-  Future<void> _getUniversityLocation() async {
-    // default 금오공대
+    // 초기 위치 설정 (지도 표시를 위해 필요)
     _currentPosition = kumoh;
-    setState(() {});
+    if (!widget.moveToCurrentLocationOnInit) {
+      _refreshListings(kumoh);
+    }
   }
 
-
+  void _onMapCreated(GoogleMapController controller) {
+    _mapController = controller;
+    // 지도가 생성된 후 현재 위치로 이동해야 하는 경우
+    if (widget.moveToCurrentLocationOnInit) {
+      _moveToCurrentLocation(false);
+    }
+  }
 
   Future<bool> _handleLocationPermission() async {
     bool serviceEnabled;
@@ -221,7 +226,7 @@ class _MapScreenState extends State<MapScreen> {
           ? const Center(child: CircularProgressIndicator())
           : GoogleMap(
 
-        onMapCreated: (controller) => _mapController = controller,
+        onMapCreated: _onMapCreated,
         initialCameraPosition:
         CameraPosition(target: _currentPosition!, zoom: 17),
         myLocationEnabled: true,

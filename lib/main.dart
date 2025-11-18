@@ -21,10 +21,12 @@ import 'package:flutter_sandbox/models/firestore_schema.dart';
 import 'package:flutter_sandbox/providers/kakao_login_provider.dart';
 import 'package:flutter_sandbox/providers/email_auth_provider.dart';
 import 'package:flutter_sandbox/providers/ad_provider.dart';
+import 'package:flutter_sandbox/providers/location_provider.dart';
 import 'package:flutter_sandbox/pages/home_page.dart';
 import 'package:flutter_sandbox/pages/verify_email_page.dart';
 import 'package:flutter_sandbox/pages/email_auth_page.dart';
 import 'package:flutter_sandbox/services/local_app_repository.dart';
+
 /// 앱의 메인 진입점
 ///
 /// Flutter 앱이 시작될 때 가장 먼저 실행되는 함수입니다.
@@ -62,6 +64,7 @@ Future<void> main() async {
         ChangeNotifierProvider(create: (context) => KakaoLoginProvider()),
         ChangeNotifierProvider(create: (context) => EmailAuthProvider()),
         ChangeNotifierProvider(create: (context) => AdProvider()),
+        ChangeNotifierProvider(create: (context) => LocationProvider()),
       ],
       child: const MyApp(),
     ),

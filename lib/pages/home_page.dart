@@ -14,10 +14,12 @@
 /// @version 1.0.0
 /// @since 2024-01-01
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_sandbox/pages/search_page.dart';
 import 'package:provider/provider.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
+import 'package:geolocator/geolocator.dart';
 
 import 'package:flutter_sandbox/providers/kakao_login_provider.dart';
 import 'package:flutter_sandbox/providers/email_auth_provider.dart';
@@ -36,6 +38,7 @@ import 'package:flutter_sandbox/widgets/ad_card.dart';
 import 'package:flutter_sandbox/models/firestore_schema.dart';
 import 'package:flutter_sandbox/config/app_config.dart';
 import 'package:flutter_sandbox/services/local_app_repository.dart';
+import 'package:flutter_sandbox/providers/location_provider.dart';
 
 /// 앱의 홈 페이지를 나타내는 위젯
 ///
@@ -109,27 +112,78 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             const SizedBox(width: 8),
-            // 위치 정보 (탭하면 지도로 이동)
-            GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const MapScreen()),
-                );
-              },
-              child: Row(
-                children: [
-                  Text(
-                    locationLabel,
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  Icon(Icons.keyboard_arrow_down, color: Colors.black),
-                ],
-              ),
+            // 위치 정보
+            Row(
+              children: [
+                Consumer2<LocationProvider, EmailAuthProvider>(
+                  builder: (context, locationProvider, emailAuthProvider, child) {
+                    String displayText;
+                    if (locationProvider.isCurrentLocationSelected) {
+                      displayText = '내 현재 위치';
+                    } else if (locationProvider.isSchoolSelected) {
+                      // 학교 선택 시 이메일로 등록한 학교 이름 표시
+                      final appUser = emailAuthProvider.user;
+                      if (appUser != null) {
+                        final schoolName = _resolveLocationLabel(appUser);
+                        displayText = schoolName;
+                      } else {
+                        displayText = '학교';
+                      }
+                    } else {
+                      displayText = locationLabel;
+                    }
+                    
+                    // 위치 필터링이 활성화되어 있으면 반경 표시 추가
+                    if (locationProvider.isLocationFilterEnabled) {
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            displayText,
+                            style: TextStyle(
+                              color: Colors.black,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.teal.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.teal.withOpacity(0.3)),
+                            ),
+                            child: Text(
+                              locationProvider.searchRadiusText,
+                              style: TextStyle(
+                                color: Colors.teal,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    } else {
+                      return Text(
+                        displayText,
+                        style: TextStyle(
+                          color: Colors.black,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      );
+                    }
+                  },
+                ),
+                GestureDetector(
+                  onTap: () {
+                    _showLocationSelectionDialog();
+                  },
+                  child: Icon(Icons.keyboard_arrow_down, color: Colors.black),
+                ),
+              ],
             ),
           ],
         ),
@@ -195,6 +249,8 @@ class _HomePageState extends State<HomePage> {
                   ? _buildLoginScreen(loginProvider, context) // 로그인되지 않은 경우
                   : Column(
                       children: [
+                        // 위치 필터링 상태 및 상품 개수 표시
+                        _buildLocationFilterInfo(),
                         // 카테고리 필터 바
                         _buildCategoryFilter(),
                         // 메인 콘텐츠
@@ -298,6 +354,274 @@ class _HomePageState extends State<HomePage> {
       }
     }
     return user.region.name;
+  }
+
+  Future<bool> _handleLocationPermission() async {
+    try {
+      bool serviceEnabled;
+      LocationPermission permission;
+
+      // GPS 켜져있는지 확인
+      serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('GPS가 꺼져 있습니다. 설정에서 켜주세요.'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        final opened = await Geolocator.openLocationSettings();
+        if (!opened && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('설정을 열 수 없습니다. 수동으로 GPS를 켜주세요.'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return false;
+      }
+
+      // 권한 확인
+      permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('위치 권한이 필요합니다. 앱 설정에서 권한을 허용해주세요.'),
+                duration: Duration(seconds: 3),
+              ),
+            );
+          }
+          return false;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('위치 권한이 영구적으로 거부되었습니다. 설정에서 권한을 허용해주세요.'),
+              duration: const Duration(seconds: 4),
+              action: SnackBarAction(
+                label: '설정 열기',
+                onPressed: () async {
+                  await Geolocator.openAppSettings();
+                },
+              ),
+            ),
+          );
+        }
+        return false;
+      }
+
+      return true;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('위치 권한 확인 중 오류가 발생했습니다: ${e.toString()}'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+      return false;
+    }
+  }
+
+  void _showLocationSelectionDialog() {
+    final locationProvider = context.read<LocationProvider>();
+    final appUser = context.read<EmailAuthProvider>().user;
+    final schoolName = appUser != null ? _resolveLocationLabel(appUser) : '학교';
+    
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('위치 선택'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 필터링 해제 옵션 (필터가 활성화되어 있을 때만 표시)
+                    if (locationProvider.isLocationFilterEnabled)
+                      ListTile(
+                        leading: const Icon(Icons.location_off, color: Colors.grey),
+                        title: const Text('전체 지역 보기'),
+                        subtitle: const Text('모든 지역의 상품을 보여줍니다'),
+                        onTap: () {
+                          locationProvider.clearLocationFilter();
+                          Navigator.pop(context);
+                        },
+                      ),
+                    if (locationProvider.isLocationFilterEnabled)
+                      const Divider(),
+                    
+                    // 위치 선택 옵션
+                    if (!locationProvider.isCurrentLocationSelected)
+                      ListTile(
+                        leading: const Icon(Icons.my_location, color: Colors.teal),
+                        title: const Text('내 현재 위치'),
+                        subtitle: Text('현재 위치 주변 ${locationProvider.searchRadiusText} 내 상품을 보여줍니다'),
+                        onTap: () {
+                          Navigator.pop(context);
+                          _selectCurrentLocation();
+                        },
+                      ),
+                    if (!locationProvider.isSchoolSelected)
+                      ListTile(
+                        leading: const Icon(Icons.school, color: Colors.teal),
+                        title: Text(schoolName),
+                        subtitle: Text('학교 주변 ${locationProvider.searchRadiusText} 내 상품을 보여줍니다'),
+                        onTap: () {
+                          Navigator.pop(context);
+                          _selectSchool();
+                        },
+                      ),
+                    
+                    // 검색 반경 선택 (필터가 활성화되어 있을 때만 표시)
+                    if (locationProvider.isLocationFilterEnabled) ...[
+                      const Divider(),
+                      const Padding(
+                        padding: EdgeInsets.only(top: 8, bottom: 4),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            '검색 반경',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ),
+                      ),
+                      ...LocationProvider.searchRadiusOptions.map((radius) {
+                        final radiusText = radius >= 1000
+                            ? '${(radius / 1000).toStringAsFixed(0)}km'
+                            : '${radius.toInt()}m';
+                        return RadioListTile<double>(
+                          title: Text(radiusText),
+                          value: radius,
+                          groupValue: locationProvider.searchRadius,
+                          onChanged: (value) {
+                            if (value != null) {
+                              locationProvider.setSearchRadius(value);
+                              setState(() {});
+                            }
+                          },
+                        );
+                      }),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                  },
+                  child: const Text('확인'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _selectCurrentLocation() async {
+    // 로딩 다이얼로그 표시
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(20.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('현재 위치를 가져오는 중...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    try {
+      final hasPermission = await _handleLocationPermission();
+      if (!mounted) return;
+      Navigator.pop(context); // 로딩 다이얼로그 닫기
+      
+      if (!hasPermission) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('위치 권한이 필요합니다. 설정에서 권한을 허용해주세요.'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 10),
+      );
+      
+      if (!mounted) return;
+      
+      context.read<LocationProvider>().setCurrentLocation(
+        position.latitude,
+        position.longitude,
+      );
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('현재 위치 주변 ${context.read<LocationProvider>().searchRadiusText} 내 상품을 표시합니다'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } on TimeoutException {
+      if (!mounted) return;
+      Navigator.pop(context); // 로딩 다이얼로그 닫기
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('위치 정보를 가져오는 데 시간이 오래 걸립니다. 네트워크 상태를 확인해주세요.'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context); // 로딩 다이얼로그 닫기
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('현재 위치를 가져올 수 없습니다: ${e.toString()}'),
+          duration: const Duration(seconds: 3),
+          action: SnackBarAction(
+            label: '다시 시도',
+            onPressed: () => _selectCurrentLocation(),
+          ),
+        ),
+      );
+    }
+  }
+
+  void _selectSchool() {
+    context.read<LocationProvider>().setSchoolLocation();
   }
 
   void _toggleFabMenu() {
@@ -503,6 +827,69 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /// 위치 필터링 정보를 표시하는 위젯
+  Widget _buildLocationFilterInfo() {
+    return Consumer2<LocationProvider, EmailAuthProvider>(
+      builder: (context, locationProvider, emailAuthProvider, child) {
+        if (!locationProvider.isLocationFilterEnabled) {
+          return const SizedBox.shrink();
+        }
+
+        // 필터링된 상품 개수 계산 (한 번만 계산)
+        final viewerUid = emailAuthProvider.user?.uid;
+        final products = AppConfig.useFirebase
+            ? getMockProducts()
+            : LocalAppRepository.instance
+                .getProducts(viewerUid: viewerUid)
+                .toList();
+        
+        var filteredCount = products.length;
+        if (locationProvider.filterLatitude != null &&
+            locationProvider.filterLongitude != null) {
+          filteredCount = products.where((product) {
+            if (product.x == 0.0 && product.y == 0.0) {
+              return false;
+            }
+            final distance = Geolocator.distanceBetween(
+              locationProvider.filterLatitude!,
+              locationProvider.filterLongitude!,
+              product.x,
+              product.y,
+            );
+            return distance <= locationProvider.searchRadius;
+          }).length;
+        }
+
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          color: Colors.teal.withOpacity(0.05),
+          child: Row(
+            children: [
+              Icon(
+                locationProvider.isCurrentLocationSelected
+                    ? Icons.my_location
+                    : Icons.school,
+                size: 16,
+                color: Colors.teal,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '주변 상품 $filteredCount개',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.teal[700],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   /// 카테고리 필터 바를 생성하는 위젯
   Widget _buildCategoryFilter() {
     return Container(
@@ -644,7 +1031,7 @@ class _HomePageState extends State<HomePage> {
         : LocalAppRepository.instance
             .getProducts(viewerUid: viewerUid)
             .toList();
-    final allProducts = products.map((product) {
+    var allProducts = products.map((product) {
       return {
         'title': product.title,
         'price': product.formattedPrice,
@@ -655,6 +1042,27 @@ class _HomePageState extends State<HomePage> {
       };
     }).toList();
 
+    // 위치 필터링 적용 (현재 위치 또는 학교 주변)
+    final locationProvider = context.read<LocationProvider>();
+    if (locationProvider.isLocationFilterEnabled &&
+        locationProvider.filterLatitude != null &&
+        locationProvider.filterLongitude != null) {
+      allProducts = allProducts.where((productMap) {
+        final product = productMap['product'] as Product;
+        // Product의 x, y가 유효한 경우에만 거리 계산
+        if (product.x == 0.0 && product.y == 0.0) {
+          return false; // 위치 정보가 없는 상품은 제외
+        }
+        final distance = Geolocator.distanceBetween(
+          locationProvider.filterLatitude!,
+          locationProvider.filterLongitude!,
+          product.x,
+          product.y,
+        );
+        return distance <= locationProvider.searchRadius;
+      }).toList();
+    }
+
     // 선택된 카테고리에 따라 필터링
     final filteredProducts = _selectedCategory == null
         ? allProducts
@@ -664,12 +1072,48 @@ class _HomePageState extends State<HomePage> {
 
     // 필터링된 상품이 없을 때
     if (filteredProducts.isEmpty) {
-      return const Center(
+      final locationProvider = context.read<LocationProvider>();
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(32.0),
-          child: Text(
-            '해당 카테고리의 상품이 없습니다',
-            style: TextStyle(fontSize: 16, color: Colors.grey),
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                _selectedCategory == null
+                    ? (locationProvider.isLocationFilterEnabled
+                        ? Icons.location_off
+                        : Icons.inbox_outlined)
+                    : Icons.category_outlined,
+                size: 64,
+                color: Colors.grey[400],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                _selectedCategory == null
+                    ? (locationProvider.isLocationFilterEnabled
+                        ? '주변에 상품이 없습니다'
+                        : '상품이 없습니다')
+                    : '해당 카테고리의 상품이 없습니다',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              if (locationProvider.isLocationFilterEnabled && _selectedCategory == null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '검색 반경을 늘리거나 필터를 해제해보세요',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey[500],
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ],
           ),
         ),
       );
