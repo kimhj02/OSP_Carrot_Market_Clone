@@ -1,8 +1,23 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:provider/provider.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_auth/firebase_auth.dart' hide EmailAuthProvider;
+
+import 'package:flutter_sandbox/models/firestore_schema.dart';
+import 'package:flutter_sandbox/models/product.dart';
+import 'package:flutter_sandbox/pages/location_picker_page.dart';
+import 'package:flutter_sandbox/providers/email_auth_provider.dart';
+import 'package:flutter_sandbox/services/local_app_repository.dart';
+import 'package:flutter_sandbox/config/app_config.dart';
 
 /// 같이사요 모집 글을 작성하는 페이지
-///
-/// 실제 저장 기능은 구현되지 않았으며, 기본 입력 양식과 UX만 제공합니다.
 class GroupBuyCreatePage extends StatefulWidget {
   const GroupBuyCreatePage({super.key});
 
@@ -20,8 +35,14 @@ class _GroupBuyCreatePageState extends State<GroupBuyCreatePage> {
       TextEditingController();
   final TextEditingController _meetingPlaceController =
       TextEditingController();
-  final TextEditingController _deadlineController = TextEditingController();
   final TextEditingController _memoController = TextEditingController();
+  final TextEditingController _imageUrlsController = TextEditingController();
+
+  final ImagePicker _imagePicker = ImagePicker();
+  List<XFile> _selectedImages = [];
+  List<AppGeoPoint> _selectedLocations = [];
+  DateTime? _orderDeadline;
+  ProductCategory _category = ProductCategory.groupBuy;
 
   bool _isSubmitting = false;
 
@@ -32,9 +53,84 @@ class _GroupBuyCreatePageState extends State<GroupBuyCreatePage> {
     _quantityController.dispose();
     _perPersonPriceController.dispose();
     _meetingPlaceController.dispose();
-    _deadlineController.dispose();
     _memoController.dispose();
+    _imageUrlsController.dispose();
     super.dispose();
+  }
+
+  Future<void> _selectLocations() async {
+    final initialLatLngs = _selectedLocations
+        .map((point) => LatLng(point.latitude, point.longitude))
+        .toList();
+    final picked = await Navigator.push<List<LatLng>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LocationPickerPage(
+          initialLocations: initialLatLngs,
+        ),
+      ),
+    );
+    if (picked != null && picked.isNotEmpty) {
+      setState(() {
+        _selectedLocations = picked
+            .map(
+              (latLng) => AppGeoPoint(
+                latitude: latLng.latitude,
+                longitude: latLng.longitude,
+              ),
+            )
+            .toList();
+      });
+    }
+  }
+
+  Future<void> _pickImages() async {
+    try {
+      final List<XFile>? pickedFiles = await _imagePicker.pickMultiImage(
+        imageQuality: 85,
+      );
+      
+      if (pickedFiles != null && pickedFiles.isNotEmpty) {
+        setState(() {
+          _selectedImages.addAll(pickedFiles);
+        });
+      }
+    } catch (e) {
+      _showMessage('이미지 선택 중 오류가 발생했습니다: $e');
+    }
+  }
+
+  Future<void> _pickDeadline() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 60)),
+    );
+    if (date == null) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+    );
+    if (time == null) return;
+    setState(() {
+      _orderDeadline = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        time.hour,
+        time.minute,
+      );
+    });
+  }
+
+  void _showMessage(String message, {bool isError = true}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red : Colors.teal,
+      ),
+    );
   }
 
   @override
@@ -91,6 +187,9 @@ class _GroupBuyCreatePageState extends State<GroupBuyCreatePage> {
                         label: '모집 인원',
                         hintText: '예) 4명',
                         keyboardType: TextInputType.number,
+                        validator: (value) => (value == null || value.trim().isEmpty)
+                            ? '모집 인원을 입력해주세요.'
+                            : null,
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -98,23 +197,157 @@ class _GroupBuyCreatePageState extends State<GroupBuyCreatePage> {
                       child: _buildTextField(
                         controller: _perPersonPriceController,
                         label: '1인 예상 금액',
-                        hintText: '예) 7,500원',
+                        hintText: '예) 7500',
                         keyboardType: TextInputType.number,
+                        validator: (value) => (value == null || value.trim().isEmpty)
+                            ? '1인 금액을 입력해주세요.'
+                            : null,
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 16),
-                _buildTextField(
-                  controller: _meetingPlaceController,
-                  label: '만날 장소',
-                  hintText: '예) 역삼역 3번 출구, 금오대학교 5호관 로비',
+                // 이미지 선택 섹션
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '이미지',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: _pickImages,
+                          icon: const Icon(Icons.add_photo_alternate),
+                          label: const Text('사진 선택'),
+                        ),
+                        const SizedBox(width: 8),
+                        if (_selectedImages.isNotEmpty)
+                          Text(
+                            '${_selectedImages.length}장 선택됨',
+                            style: const TextStyle(color: Colors.orange),
+                          ),
+                      ],
+                    ),
+                    if (_selectedImages.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 100,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: _selectedImages.length,
+                          itemBuilder: (context, index) {
+                            return Stack(
+                              children: [
+                                Container(
+                                  width: 100,
+                                  height: 100,
+                                  margin: const EdgeInsets.only(right: 8),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: Colors.grey),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Image.file(
+                                    File(_selectedImages[index].path),
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                                Positioned(
+                                  top: 4,
+                                  right: 4,
+                                  child: IconButton(
+                                    icon: const Icon(Icons.close, size: 20),
+                                    color: Colors.red,
+                                    onPressed: () {
+                                      setState(() {
+                                        _selectedImages.removeAt(index);
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _imageUrlsController,
+                      decoration: const InputDecoration(
+                        labelText: '이미지 URL (선택사항, 쉼표로 구분)',
+                        border: OutlineInputBorder(),
+                        helperText: '또는 이미지 URL을 직접 입력할 수 있습니다',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                // 위치 선택
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          '거래 위치',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        TextButton.icon(
+                          onPressed: _selectLocations,
+                          icon: const Icon(Icons.map),
+                          label: const Text('지도에서 선택'),
+                        ),
+                      ],
+                    ),
+                    if (_selectedLocations.isEmpty)
+                      const Text(
+                        '아직 선택된 위치가 없습니다.',
+                        style: TextStyle(color: Colors.grey),
+                      )
+                    else
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: _selectedLocations.asMap().entries.map((entry) {
+                          return Chip(
+                            label: Text(
+                              '${entry.key + 1}. ${entry.value.latitude.toStringAsFixed(4)}, ${entry.value.longitude.toStringAsFixed(4)}',
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 16),
                 _buildTextField(
-                  controller: _deadlineController,
-                  label: '주문 마감 시간',
-                  hintText: '예) 오늘 밤 11시까지, 3월 15일 오후 2시',
+                  controller: _meetingPlaceController,
+                  label: '만날 장소 설명',
+                  hintText: '예) 역삼역 3번 출구, 금오대학교 5호관 로비',
+                  validator: (value) => (value == null || value.trim().isEmpty)
+                      ? '만날 장소를 입력해주세요.'
+                      : null,
+                ),
+                const SizedBox(height: 16),
+                // 주문 마감 시간 선택
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text(
+                    '주문 마감 시간',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Text(
+                    _orderDeadline == null
+                        ? '선택되지 않음'
+                        : DateFormat('yyyy-MM-dd HH:mm').format(_orderDeadline!),
+                  ),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.calendar_today),
+                    onPressed: _pickDeadline,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 _buildTextField(
@@ -237,26 +470,182 @@ class _GroupBuyCreatePageState extends State<GroupBuyCreatePage> {
   }
 
   Future<void> _submit() async {
-    if (_formKey.currentState?.validate() != true) {
+    if (_isSubmitting) return;
+    if (!_formKey.currentState!.validate()) return;
+    if (_selectedLocations.isEmpty) {
+      _showMessage('거래 위치를 한 곳 이상 선택해주세요.');
+      return;
+    }
+    if (_orderDeadline == null) {
+      _showMessage('주문 마감 시간을 선택해주세요.');
+      return;
+    }
+
+    final user = context.read<EmailAuthProvider>().user;
+    if (user == null) {
+      _showMessage('로그인이 필요합니다.');
       return;
     }
 
     setState(() => _isSubmitting = true);
 
-    await Future<void>.delayed(const Duration(seconds: 1));
+    try {
+      List<String> images = [];
+      
+      // Firebase 사용 시 이미지를 Firebase Storage에 업로드
+      if (AppConfig.useFirebase && _selectedImages.isNotEmpty) {
+        final storage = FirebaseStorage.instance;
+        final authUser = FirebaseAuth.instance.currentUser;
+        if (authUser == null) {
+          _showMessage('로그인이 필요합니다.');
+          setState(() => _isSubmitting = false);
+          return;
+        }
+        
+        for (var imageFile in _selectedImages) {
+          try {
+            final fileName = '${DateTime.now().millisecondsSinceEpoch}_${path.basename(imageFile.path)}';
+            final ref = storage.ref().child('products/${authUser.uid}/$fileName');
+            await ref.putFile(File(imageFile.path));
+            final downloadUrl = await ref.getDownloadURL();
+            images.add(downloadUrl);
+          } catch (e) {
+            _showMessage('이미지 업로드 실패: $e');
+            setState(() => _isSubmitting = false);
+            return;
+          }
+        }
+      } else if (!AppConfig.useFirebase && _selectedImages.isNotEmpty) {
+        // 로컬 모드: 앱 내부 디렉토리에 복사
+        final appDir = await getApplicationDocumentsDirectory();
+        final imagesDir = Directory(path.join(appDir.path, 'product_images'));
+        if (!await imagesDir.exists()) {
+          await imagesDir.create(recursive: true);
+        }
+        
+        for (var imageFile in _selectedImages) {
+          final fileName = path.basename(imageFile.path);
+          final savedFile = File(path.join(imagesDir.path, fileName));
+          await File(imageFile.path).copy(savedFile.path);
+          images.add(savedFile.path);
+        }
+      }
+      
+      // URL로 입력한 이미지도 추가
+      final urlImages = _imageUrlsController.text
+          .split(',')
+          .map((url) => url.trim())
+          .where((url) => url.isNotEmpty)
+          .toList();
+      images.addAll(urlImages);
 
-    if (!mounted) return;
+      final groupInfo = GroupBuyInfo(
+        itemSummary: _itemController.text.trim(),
+        maxMembers: int.tryParse(_quantityController.text.trim()) ?? 0,
+        currentMembers: 1,
+        pricePerPerson: int.tryParse(_perPersonPriceController.text.trim()) ?? 0,
+        orderDeadline: _orderDeadline!,
+        meetPlaceText: _meetingPlaceController.text.trim(),
+      );
 
-    setState(() => _isSubmitting = false);
+      // Firebase 사용 시 Firestore에 저장
+      if (AppConfig.useFirebase) {
+        final firestore = FirebaseFirestore.instance;
+        final authUser = FirebaseAuth.instance.currentUser;
+        if (authUser == null) {
+          _showMessage('로그인이 필요합니다.');
+          setState(() => _isSubmitting = false);
+          return;
+        }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('같이사요 모집글이 등록되었습니다 (샘플 동작)'),
-        duration: Duration(seconds: 2),
-      ),
-    );
+        // 선택한 첫 번째 위치에 따라 실제 지역을 결정
+        final primaryLocation = _selectedLocations.first;
+        final actualRegion = LocalAppRepository.instance.getRegionByLocation(
+          primaryLocation.latitude,
+          primaryLocation.longitude,
+        ) ?? user.region;
 
-    Navigator.pop(context, true);
+        // 같이사요는 가격을 1인 금액 * 모집 인원으로 계산
+        final totalPrice = groupInfo.pricePerPerson * groupInfo.maxMembers;
+
+        final productData = {
+          'type': 'groupBuy',
+          'title': _titleController.text.trim(),
+          'price': totalPrice,
+          'location': GeoPoint(primaryLocation.latitude, primaryLocation.longitude),
+          'meetLocations': _selectedLocations.map((loc) => 
+            GeoPoint(loc.latitude, loc.longitude)).toList(),
+          'images': images.isEmpty ? ['lib/dummy_data/아이폰.jpeg'] : images,
+          'category': _category.index,
+          'status': 0, // ListingStatus.onSale
+          'region': {
+            'code': actualRegion.code,
+            'name': actualRegion.name,
+            'level': actualRegion.level,
+            'parent': actualRegion.parent,
+          },
+          'universityId': user.universityId,
+          'sellerUid': user.uid,
+          'sellerName': user.displayName,
+          'sellerPhotoUrl': user.photoUrl,
+          'likeCount': 0,
+          'viewCount': 0,
+          'description': _memoController.text.trim(),
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+          'likedUserIds': [],
+          'groupBuy': {
+            'itemSummary': groupInfo.itemSummary,
+            'maxMembers': groupInfo.maxMembers,
+            'currentMembers': groupInfo.currentMembers,
+            'pricePerPerson': groupInfo.pricePerPerson,
+            'orderDeadline': Timestamp.fromDate(groupInfo.orderDeadline),
+            'meetPlaceText': groupInfo.meetPlaceText,
+          },
+        };
+
+        await firestore.collection('products').add(productData);
+
+        if (mounted) {
+          _showMessage('같이사요 모집글이 등록되었습니다!', isError: false);
+          Navigator.pop(context, true);
+        }
+      } else {
+        // 로컬 모드
+        final primaryLocation = _selectedLocations.first;
+        final actualRegion = LocalAppRepository.instance.getRegionByLocation(
+          primaryLocation.latitude,
+          primaryLocation.longitude,
+        ) ?? user.region;
+
+        final totalPrice = groupInfo.pricePerPerson * groupInfo.maxMembers;
+
+        await LocalAppRepository.instance.createListing(
+          type: ListingType.groupBuy,
+          title: _titleController.text.trim(),
+          price: totalPrice,
+          meetLocations: _selectedLocations,
+          images: images.isEmpty ? ['lib/dummy_data/아이폰.jpeg'] : images,
+          category: _category,
+          region: actualRegion,
+          universityId: user.universityId,
+          seller: user,
+          description: _memoController.text.trim(),
+          groupBuy: groupInfo,
+        );
+
+        if (mounted) {
+          _showMessage('같이사요 모집글이 등록되었습니다!', isError: false);
+          Navigator.pop(context, true);
+        }
+      }
+    } catch (e) {
+      _showMessage('등록에 실패했습니다: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
   }
 }
 

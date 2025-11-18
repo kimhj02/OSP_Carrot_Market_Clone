@@ -13,6 +13,7 @@ import 'package:flutter_sandbox/models/product.dart';
 import 'package:flutter_sandbox/pages/product_detail_page.dart';
 import 'package:flutter_sandbox/services/local_app_repository.dart';
 import 'package:flutter_sandbox/providers/location_provider.dart';
+import 'package:flutter_sandbox/providers/email_auth_provider.dart';
 import 'package:flutter_sandbox/config/app_config.dart';
 
 class MapScreen extends StatefulWidget {
@@ -406,6 +407,53 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     debugPrint('✅ 마커 아이콘 로드 완료');
   }
 
+  /// Listing을 Product로 변환하는 헬퍼 함수
+  Product _convertListingToProduct(Listing listing, BuildContext context) {
+    // ListingStatus를 ProductStatus로 변환
+    ProductStatus productStatus;
+    switch (listing.status) {
+      case ListingStatus.onSale:
+        productStatus = ProductStatus.onSale;
+        break;
+      case ListingStatus.reserved:
+        productStatus = ProductStatus.reserved;
+        break;
+      case ListingStatus.sold:
+        productStatus = ProductStatus.sold;
+        break;
+    }
+
+    // 현재 사용자 ID 가져오기 (isLiked 확인용)
+    final currentUserId = context.read<EmailAuthProvider>().user?.uid ?? '';
+    final isLiked = listing.likedUserIds.contains(currentUserId);
+
+    // region을 location String으로 변환
+    final locationString = listing.region.name.isNotEmpty
+        ? listing.region.name
+        : '${listing.location.latitude.toStringAsFixed(4)}, ${listing.location.longitude.toStringAsFixed(4)}';
+
+    return Product(
+      id: listing.id,
+      title: listing.title,
+      description: listing.description,
+      price: listing.price,
+      imageUrls: listing.images,
+      category: listing.category,
+      status: productStatus,
+      sellerId: listing.sellerUid,
+      sellerNickname: listing.sellerName,
+      sellerProfileImageUrl: listing.sellerPhotoUrl,
+      location: locationString,
+      createdAt: listing.createdAt,
+      updatedAt: listing.updatedAt,
+      viewCount: listing.viewCount,
+      likeCount: listing.likeCount,
+      isLiked: isLiked,
+      x: listing.location.latitude,
+      y: listing.location.longitude,
+    );
+  }
+
   Future<void> _preloadMarkerIcons() async {
     for (final pin in _pins) {
       if (_markerCache.containsKey(pin.markerId)) continue;
@@ -450,7 +498,10 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             shape: const RoundedRectangleBorder(
               borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
             ),
-            builder: (_) => _ListingBottomSheet(pin: pin),
+            builder: (_) => _ListingBottomSheet(
+              pin: pin,
+              onConvertToListing: _convertListingToProduct,
+            ),
           );
         },
       ));
@@ -561,9 +612,13 @@ class _ListingPin {
 }
 
 class _ListingBottomSheet extends StatelessWidget {
-  const _ListingBottomSheet({required this.pin});
+  const _ListingBottomSheet({
+    required this.pin,
+    required this.onConvertToListing,
+  });
 
   final _ListingPin pin;
+  final Product Function(Listing, BuildContext) onConvertToListing;
 
   @override
   Widget build(BuildContext context) {
@@ -636,12 +691,13 @@ class _ListingBottomSheet extends StatelessWidget {
               ElevatedButton(
                 onPressed: () {
                   Navigator.pop(context, listing);
+                  // Listing을 Product로 변환
+                  final product = onConvertToListing(listing, context);
                   Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (_) => ProductDetailPage(
-                        product: LocalAppRepository.instance
-                            .getProductById(listing.id)!,
+                        product: product,
                       ),
                     ),
                   );

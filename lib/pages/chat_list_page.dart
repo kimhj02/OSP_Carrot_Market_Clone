@@ -91,6 +91,11 @@ class ChatRoom {
 
   /// 상대방 이름 가져오기
   String getOpponentName(String currentUserId) {
+    if (type == 'groupBuy') {
+      // 그룹 채팅: 상품 제목 표시
+      return productTitle.isNotEmpty ? productTitle : '같이사요 채팅';
+    }
+    
     final opponentId = participants.firstWhere(
           (id) => id != currentUserId,
       orElse: () => '',

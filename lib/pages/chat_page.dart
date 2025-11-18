@@ -303,10 +303,9 @@ class _ChatPageState extends State<ChatPage> {
         final participants = List<String>.from(
             chatRoomDoc.data()?['participants'] ?? []
         );
-        final recipientId = participants.firstWhere(
-              (id) => id != _currentUserId,
-          orElse: () => '',
-        );
+        
+        // 받는 사람 목록 (본인 제외)
+        final recipientIds = participants.where((id) => id != _currentUserId).toList();
 
         await FirebaseFirestore.instance
             .collection(ChatConstants.chatRoomsCollection)
@@ -319,24 +318,32 @@ class _ChatPageState extends State<ChatPage> {
           'isRead': false,
         });
 
+        // 읽지 않은 메시지 수 업데이트 (모든 참여자에게)
+        final unreadCountUpdates = <String, dynamic>{};
+        for (final recipientId in recipientIds) {
+          unreadCountUpdates['${ChatConstants.unreadCount}.$recipientId'] = FieldValue.increment(1);
+        }
+
         await FirebaseFirestore.instance
             .collection(ChatConstants.chatRoomsCollection)
             .doc(widget.chatRoomId)
             .update({
           ChatConstants.lastMessage: message,
           ChatConstants.lastMessageTime: FieldValue.serverTimestamp(),
-          '${ChatConstants.unreadCount}.$recipientId': FieldValue.increment(1),
+          ...unreadCountUpdates,
         });
 
-        // 알림 전송
-        if (recipientId.isNotEmpty) {
-          final senderName = context.read<EmailAuthProvider>().user?.displayName ?? '알 수 없음';
-          await FCMService().sendChatNotification(
-            recipientUid: recipientId,
-            senderName: senderName,
-            message: message,
-            chatRoomId: widget.chatRoomId,
-          );
+        // 알림 전송 (모든 참여자에게)
+        final senderName = context.read<EmailAuthProvider>().user?.displayName ?? '알 수 없음';
+        for (final recipientId in recipientIds) {
+          if (recipientId.isNotEmpty) {
+            await FCMService().sendChatNotification(
+              recipientUid: recipientId,
+              senderName: senderName,
+              message: message,
+              chatRoomId: widget.chatRoomId,
+            );
+          }
         }
       } else {
         await LocalAppRepository.instance.sendMessage(
@@ -407,13 +414,71 @@ class _ChatPageState extends State<ChatPage> {
           icon: const Icon(Icons.arrow_back, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(
-          widget.opponentName,
-          style: const TextStyle(
-            color: Colors.black,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
+        title: StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection(ChatConstants.chatRoomsCollection)
+              .doc(widget.chatRoomId)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return Text(
+                widget.opponentName,
+                style: const TextStyle(
+                  color: Colors.black,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              );
+            }
+            
+            final data = snapshot.data!.data() as Map<String, dynamic>?;
+            final chatRoomType = data?['type'] ?? 'purchase';
+            final isGroupChat = chatRoomType == 'groupBuy';
+            
+            if (isGroupChat) {
+              // 그룹 채팅: 상품 제목 표시
+              final productTitle = data?['productTitle'] as String? ?? '같이사요 채팅';
+              final participants = List<String>.from(data?['participants'] ?? []);
+              final otherParticipants = participants
+                  .where((id) => id != _currentUserId)
+                  .length;
+              
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    productTitle,
+                    style: const TextStyle(
+                      color: Colors.black,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (otherParticipants > 0)
+                    Text(
+                      '${otherParticipants}명 참여',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 12,
+                      ),
+                    ),
+                ],
+              );
+            } else {
+              // 1:1 채팅: 기존대로 상대방 이름 표시
+              return Text(
+                widget.opponentName,
+                style: const TextStyle(
+                  color: Colors.black,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              );
+            }
+          },
         ),
         actions: [
           IconButton(
@@ -559,9 +624,32 @@ class _ChatPageState extends State<ChatPage> {
         return Column(
           children: [
             if (showDateDivider) _DateDivider(date: message.createdAt),
-            _MessageBubble(
-              message: message,
-              isMine: isMine,
+            StreamBuilder<DocumentSnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection(ChatConstants.chatRoomsCollection)
+                  .doc(widget.chatRoomId)
+                  .snapshots(),
+              builder: (context, roomSnapshot) {
+                if (!roomSnapshot.hasData) {
+                  return _MessageBubble(
+                    message: message,
+                    isMine: isMine,
+                  );
+                }
+                
+                final data = roomSnapshot.data!.data() as Map<String, dynamic>?;
+                final isGroupChat = data?['type'] == 'groupBuy';
+                final participantNames = data?['participantNames'] != null
+                    ? Map<String, String>.from(data!['participantNames'] as Map)
+                    : <String, String>{};
+                
+                return _MessageBubble(
+                  message: message,
+                  isMine: isMine,
+                  isGroupChat: isGroupChat,
+                  participantNames: participantNames,
+                );
+              },
             ),
             const SizedBox(height: 8),
           ],
@@ -635,70 +723,95 @@ class _DateDivider extends StatelessWidget {
 class _MessageBubble extends StatelessWidget {
   final ChatMessage message;
   final bool isMine;
+  final bool isGroupChat;
+  final Map<String, String> participantNames;
 
   const _MessageBubble({
     required this.message,
     required this.isMine,
+    this.isGroupChat = false,
+    this.participantNames = const {},
   });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment:
-      isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
-      crossAxisAlignment: CrossAxisAlignment.end,
+    final senderName = participantNames[message.senderId] ?? '알 수 없음';
+    
+    return Column(
+      crossAxisAlignment: isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
-        if (isMine) ...[
-          /// 내 메시지: 시간 표시
+        // 그룹 채팅이고 내 메시지가 아닐 때 발신자 이름 표시
+        if (isGroupChat && !isMine) ...[
           Padding(
-            padding: const EdgeInsets.only(right: 8),
+            padding: const EdgeInsets.only(left: 8, bottom: 4),
             child: Text(
-              DateFormat('HH:mm').format(message.createdAt),
+              senderName,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 12,
                 color: Colors.grey[600],
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
         ],
+        Row(
+          mainAxisAlignment:
+          isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            if (isMine) ...[
+              /// 내 메시지: 시간 표시
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Text(
+                  DateFormat('HH:mm').format(message.createdAt),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ),
+            ],
 
-        /// 메시지 말풍선
-        Flexible(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: isMine ? Colors.teal : Colors.grey[200],
-              borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(18),
-                topRight: const Radius.circular(18),
-                bottomLeft: Radius.circular(isMine ? 18 : 4),
-                bottomRight: Radius.circular(isMine ? 4 : 18),
+            /// 메시지 말풍선
+            Flexible(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isMine ? Colors.teal : Colors.grey[200],
+                  borderRadius: BorderRadius.only(
+                    topLeft: const Radius.circular(18),
+                    topRight: const Radius.circular(18),
+                    bottomLeft: Radius.circular(isMine ? 18 : 4),
+                    bottomRight: Radius.circular(isMine ? 4 : 18),
+                  ),
+                ),
+                child: Text(
+                  message.text,
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: isMine ? Colors.white : Colors.black87,
+                    height: 1.4,
+                  ),
+                ),
               ),
             ),
-            child: Text(
-              message.text,
-              style: TextStyle(
-                fontSize: 15,
-                color: isMine ? Colors.white : Colors.black87,
-                height: 1.4,
+
+            if (!isMine) ...[
+              /// 상대방 메시지 시간 표시
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Text(
+                  DateFormat('HH:mm').format(message.createdAt),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey[600],
+                  ),
+                ),
               ),
-            ),
-          ),
+            ],
+          ],
         ),
-
-        if (!isMine) ...[
-          /// 상대방 메시지 시간 표시
-          Padding(
-            padding: const EdgeInsets.only(left: 8),
-            child: Text(
-              DateFormat('HH:mm').format(message.createdAt),
-              style: TextStyle(
-                fontSize: 11,
-                color: Colors.grey[600],
-              ),
-            ),
-          ),
-        ],
       ],
     );
   }

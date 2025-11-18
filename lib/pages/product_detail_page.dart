@@ -707,14 +707,27 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         throw Exception('본인의 상품에는 채팅할 수 없습니다');
       }
 
+      // 같이사요 상품인지 확인
+      final isGroupBuy = widget.product.category == ProductCategory.groupBuy;
+      
       String chatRoomId;
       if (AppConfig.useFirebase) {
-        final existingRoomId = await _findExistingChatRoom(
-          buyerId,
-          sellerId,
-          widget.product.id,
-        );
-        chatRoomId = existingRoomId ?? await _createChatRoom(buyerId, sellerId);
+        if (isGroupBuy) {
+          // 같이사요 상품: 그룹 채팅방 생성 또는 참여
+          chatRoomId = await _getOrCreateGroupChatRoom(
+            buyerId,
+            sellerId,
+            widget.product.id,
+          );
+        } else {
+          // 일반 상품: 1:1 채팅방
+          final existingRoomId = await _findExistingChatRoom(
+            buyerId,
+            sellerId,
+            widget.product.id,
+          );
+          chatRoomId = existingRoomId ?? await _createChatRoom(buyerId, sellerId);
+        }
         await _sendMessage(chatRoomId, buyerId, message);
       } else {
         final repo = LocalAppRepository.instance;
@@ -772,7 +785,115 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     return null;
   }
 
-  /// 새 채팅방 생성
+  /// 같이사요 그룹 채팅방 생성 또는 참여
+  Future<String> _getOrCreateGroupChatRoom(
+    String buyerId,
+    String sellerId,
+    String productId,
+  ) async {
+    // 기존 그룹 채팅방 찾기 (같은 상품에 대한 그룹 채팅방)
+    final querySnapshot = await FirebaseFirestore.instance
+        .collection('chatRooms')
+        .where('productId', isEqualTo: productId)
+        .where('type', isEqualTo: 'groupBuy')
+        .limit(1)
+        .get();
+
+    if (querySnapshot.docs.isNotEmpty) {
+      // 기존 그룹 채팅방이 있으면 참여
+      final chatRoomDoc = querySnapshot.docs.first;
+      final chatRoomId = chatRoomDoc.id;
+      final data = chatRoomDoc.data();
+      final participants = List<String>.from(data['participants'] ?? []);
+      final participantNames = Map<String, String>.from(data['participantNames'] ?? {});
+      final unreadCount = Map<String, int>.from(
+        (data['unreadCount'] as Map<String, dynamic>?)?.map(
+          (key, value) => MapEntry(key, value as int),
+        ) ?? {},
+      );
+
+      // 이미 참여 중이면 그대로 반환
+      if (participants.contains(buyerId)) {
+        return chatRoomId;
+      }
+
+      // 참여자 정보 가져오기
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(buyerId)
+          .get();
+      final buyerName = userDoc.exists
+          ? (userDoc.data()?['name'] ?? userDoc.data()?['displayName'] ?? '참여자')
+          : '참여자';
+
+      // 참여자 추가
+      participants.add(buyerId);
+      participantNames[buyerId] = buyerName;
+      unreadCount[buyerId] = 0;
+
+      await FirebaseFirestore.instance
+          .collection('chatRooms')
+          .doc(chatRoomId)
+          .update({
+        'participants': participants,
+        'participantNames': participantNames,
+        'unreadCount': unreadCount,
+      });
+
+      return chatRoomId;
+    } else {
+      // 새 그룹 채팅방 생성
+      return await _createGroupChatRoom(buyerId, sellerId);
+    }
+  }
+
+  /// 새 그룹 채팅방 생성
+  Future<String> _createGroupChatRoom(String buyerId, String sellerId) async {
+    // 참여자 정보 가져오기
+    final buyerDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(buyerId)
+        .get();
+    final buyerName = buyerDoc.exists
+        ? (buyerDoc.data()?['name'] ?? buyerDoc.data()?['displayName'] ?? '참여자')
+        : '참여자';
+
+    /// 채팅방 데이터 생성
+    final chatRoomData = {
+      'participants': [sellerId, buyerId], // 모집자 먼저, 참여자 추가
+      'participantNames': {
+        sellerId: widget.product.sellerNickname,
+        buyerId: buyerName,
+      },
+
+      'productId': widget.product.id,
+      'productTitle': widget.product.title,
+      'productImage': widget.product.imageUrls.isNotEmpty
+          ? widget.product.imageUrls.first
+          : '',
+      'productPrice': widget.product.price,
+
+      'lastMessage': '',
+      'lastMessageTime': FieldValue.serverTimestamp(),
+
+      'unreadCount': {
+        sellerId: 0,
+        buyerId: 0,
+      },
+
+      'createdAt': FieldValue.serverTimestamp(),
+      'type': 'groupBuy', // 그룹 채팅방 타입
+    };
+
+    /// Firestore에 저장
+    final docRef = await FirebaseFirestore.instance
+                  .collection('chatRooms')
+                  .add(chatRoomData);
+
+    return docRef.id;
+  }
+
+  /// 새 채팅방 생성 (1:1)
   Future<String> _createChatRoom(String buyerId, String sellerId) async {
 
     /// 구매자 정보 가져오기
@@ -782,7 +903,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         .get();
 
     final buyerName = userDoc.exists
-        ? (userDoc.data()?['name'] ?? '구매자')
+        ? (userDoc.data()?['name'] ?? userDoc.data()?['displayName'] ?? '구매자')
         : '구매자';
 
     /// 채팅방 데이터 생성
