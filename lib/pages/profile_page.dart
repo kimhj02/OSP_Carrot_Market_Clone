@@ -42,6 +42,9 @@ class _ProfilePageState extends State<ProfilePage>
   /// 내가 등록한 상품 목록 (임시 데이터)
   List<Product> _myProducts = [];
 
+  /// 내가 찜한 상품 목록 (임시 데이터)
+  List<Product> _likedProducts = [];
+
   /// 관리자 페이지 접근을 위한 설정 아이콘 탭 횟수
   int _settingsTapCount = 0;
 
@@ -51,8 +54,9 @@ class _ProfilePageState extends State<ProfilePage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _loadMyProducts();
+    _loadLikedProducts();
   }
 
   @override
@@ -72,6 +76,17 @@ class _ProfilePageState extends State<ProfilePage>
     ];
   }
 
+  /// 내가 찜한 상품 목록을 로드하는 메서드 (임시 데이터)
+  void _loadLikedProducts() {
+    // 실제로는 사용자 ID로 찜한 상품을 가져옵니다
+    final products = getMockProducts();
+    _likedProducts = [
+      products[3],
+      products[4],
+      products[5],
+    ];
+  }
+
   /// 현재 선택된 탭에 해당하는 상품 목록을 반환하는 메서드
   List<Product> get _filteredProducts {
     final selectedIndex = _tabController.index;
@@ -88,6 +103,8 @@ class _ProfilePageState extends State<ProfilePage>
         return _myProducts
             .where((p) => p.status == ProductStatus.sold)
             .toList();
+      case 3: // 찜한 상품
+        return _likedProducts;
       default:
         return [];
     }
@@ -277,10 +294,12 @@ class _ProfilePageState extends State<ProfilePage>
         indicatorColor: Colors.teal,
         labelColor: Colors.teal,
         unselectedLabelColor: Colors.grey,
+        isScrollable: true,
         tabs: const [
           Tab(text: '판매중'),
           Tab(text: '예약중'),
           Tab(text: '판매완료'),
+          Tab(text: '찜한 상품'),
         ],
         onTap: (index) {
           setState(() {});
@@ -476,6 +495,8 @@ class _ProfilePageState extends State<ProfilePage>
         return '예약된 상품이 없습니다';
       case 2:
         return '판매 완료된 상품이 없습니다';
+      case 3:
+        return '찜한 상품이 없습니다';
       default:
         return '';
     }

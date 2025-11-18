@@ -17,9 +17,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:flutter_sandbox/models/product.dart';
 import 'package:flutter_sandbox/models/ad.dart';
 import 'package:flutter_sandbox/providers/ad_provider.dart';
+import 'package:flutter_sandbox/providers/location_provider.dart';
 import 'package:flutter_sandbox/pages/product_detail_page.dart';
 import 'package:flutter_sandbox/widgets/ad_card.dart';
 import 'package:flutter_sandbox/data/mock_products.dart';
@@ -62,8 +64,28 @@ class _ProductListPageState extends State<ProductListPage> {
   }
 
   /// 필터링된 상품 목록을 반환하는 메서드
-  List<Product> get _filteredProducts {
+  List<Product> _getFilteredProducts(LocationProvider? locationProvider) {
     List<Product> filtered = _products;
+
+    // 위치 필터링 적용 (현재 위치 또는 학교 주변)
+    if (locationProvider != null &&
+        locationProvider.isLocationFilterEnabled &&
+        locationProvider.filterLatitude != null &&
+        locationProvider.filterLongitude != null) {
+      filtered = filtered.where((product) {
+        // Product의 x, y가 유효한 경우에만 거리 계산
+        if (product.x == 0.0 && product.y == 0.0) {
+          return false; // 위치 정보가 없는 상품은 제외
+        }
+        final distance = Geolocator.distanceBetween(
+          locationProvider.filterLatitude!,
+          locationProvider.filterLongitude!,
+          product.x,
+          product.y,
+        );
+        return distance <= locationProvider.searchRadius;
+      }).toList();
+    }
 
     // 카테고리 필터링
     if (_selectedCategory != null) {
@@ -88,19 +110,46 @@ class _ProductListPageState extends State<ProductListPage> {
     }
 
     // 정렬
-    switch (_sortType) {
-      case SortType.latest:
-        filtered.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-        break;
-      case SortType.priceLow:
-        filtered.sort((a, b) => a.price.compareTo(b.price));
-        break;
-      case SortType.priceHigh:
-        filtered.sort((a, b) => b.price.compareTo(a.price));
-        break;
-      case SortType.popular:
-        filtered.sort((a, b) => b.likeCount.compareTo(a.likeCount));
-        break;
+    if (locationProvider != null &&
+        locationProvider.isLocationFilterEnabled &&
+        locationProvider.filterLatitude != null &&
+        locationProvider.filterLongitude != null &&
+        _sortType == SortType.distance) {
+      // 거리순 정렬
+      filtered.sort((a, b) {
+        final distanceA = Geolocator.distanceBetween(
+          locationProvider.filterLatitude!,
+          locationProvider.filterLongitude!,
+          a.x,
+          a.y,
+        );
+        final distanceB = Geolocator.distanceBetween(
+          locationProvider.filterLatitude!,
+          locationProvider.filterLongitude!,
+          b.x,
+          b.y,
+        );
+        return distanceA.compareTo(distanceB);
+      });
+    } else {
+      switch (_sortType) {
+        case SortType.latest:
+          filtered.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          break;
+        case SortType.priceLow:
+          filtered.sort((a, b) => a.price.compareTo(b.price));
+          break;
+        case SortType.priceHigh:
+          filtered.sort((a, b) => b.price.compareTo(a.price));
+          break;
+        case SortType.popular:
+          filtered.sort((a, b) => b.likeCount.compareTo(a.likeCount));
+          break;
+        case SortType.distance:
+          // 거리순은 위치 필터가 없으면 최신순으로 대체
+          filtered.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          break;
+      }
     }
 
     return filtered;
@@ -108,46 +157,53 @@ class _ProductListPageState extends State<ProductListPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: const Text(
-          '상품 목록',
-          style: TextStyle(
-            color: Colors.black,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
+    return Consumer<LocationProvider>(
+      builder: (context, locationProvider, child) {
+        final filteredProducts = _getFilteredProducts(locationProvider);
+        
+        return Scaffold(
+          appBar: AppBar(
+            backgroundColor: Colors.white,
+            elevation: 0,
+            title: const Text(
+              '상품 목록',
+              style: TextStyle(
+                color: Colors.black,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.black),
+              onPressed: () => Navigator.pop(context),
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.search, color: Colors.black),
+                onPressed: _showSearchDialog,
+              ),
+              IconButton(
+                icon: const Icon(Icons.sort, color: Colors.black),
+                onPressed: () => _showSortDialog(locationProvider),
+              ),
+            ],
           ),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.search, color: Colors.black),
-            onPressed: _showSearchDialog,
+          body: Column(
+            children: [
+              // 위치 필터링 정보 표시
+              _buildLocationFilterInfo(locationProvider),
+              // 카테고리 필터
+              _buildCategoryFilter(),
+              // 상품 목록
+              Expanded(
+                child: filteredProducts.isEmpty
+                    ? _buildEmptyState(locationProvider)
+                    : _buildProductList(filteredProducts),
+              ),
+            ],
           ),
-          IconButton(
-            icon: const Icon(Icons.sort, color: Colors.black),
-            onPressed: _showSortDialog,
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // 카테고리 필터
-          _buildCategoryFilter(),
-
-          // 상품 목록
-          Expanded(
-            child: _filteredProducts.isEmpty
-                ? _buildEmptyState()
-                : _buildProductList(),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -227,12 +283,62 @@ class _ProductListPageState extends State<ProductListPage> {
     return mergedList;
   }
 
+  /// 위치 필터링 정보를 표시하는 위젯
+  Widget _buildLocationFilterInfo(LocationProvider locationProvider) {
+    if (!locationProvider.isLocationFilterEnabled) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: Colors.teal.withOpacity(0.05),
+      child: Row(
+        children: [
+          Icon(
+            locationProvider.isCurrentLocationSelected
+                ? Icons.my_location
+                : Icons.school,
+            size: 16,
+            color: Colors.teal,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '주변 상품',
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.teal[700],
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.teal.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.teal.withOpacity(0.3)),
+            ),
+            child: Text(
+              locationProvider.searchRadiusText,
+              style: TextStyle(
+                color: Colors.teal,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// 상품 목록을 생성하는 위젯
-  Widget _buildProductList() {
+  Widget _buildProductList(List<Product> filteredProducts) {
     return Consumer<AdProvider>(
       builder: (context, adProvider, child) {
         final mergedList = _getMergedList(
-          _filteredProducts,
+          filteredProducts,
           adProvider.activeAds,
         );
 
@@ -471,27 +577,46 @@ class _ProductListPageState extends State<ProductListPage> {
   }
 
   /// 빈 상태를 표시하는 위젯
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(LocationProvider locationProvider) {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.inbox_outlined, size: 64, color: Colors.grey[400]),
-          const SizedBox(height: 16),
-          Text(
-            '상품이 없습니다',
-            style: TextStyle(
-              fontSize: 18,
-              color: Colors.grey[600],
-              fontWeight: FontWeight.bold,
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              _selectedCategory == null
+                  ? (locationProvider.isLocationFilterEnabled
+                      ? Icons.location_off
+                      : Icons.inbox_outlined)
+                  : Icons.category_outlined,
+              size: 64,
+              color: Colors.grey[400],
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '다른 카테고리나 검색어를 시도해보세요',
-            style: TextStyle(fontSize: 14, color: Colors.grey[500]),
-          ),
-        ],
+            const SizedBox(height: 16),
+            Text(
+              _selectedCategory == null
+                  ? (locationProvider.isLocationFilterEnabled
+                      ? '주변에 상품이 없습니다'
+                      : '상품이 없습니다')
+                  : '해당 카테고리의 상품이 없습니다',
+              style: TextStyle(
+                fontSize: 18,
+                color: Colors.grey[600],
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              locationProvider.isLocationFilterEnabled && _selectedCategory == null
+                  ? '검색 반경을 늘리거나 필터를 해제해보세요'
+                  : '다른 카테고리나 검색어를 시도해보세요',
+              style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -535,7 +660,12 @@ class _ProductListPageState extends State<ProductListPage> {
   }
 
   /// 정렬 다이얼로그를 표시하는 메서드
-  void _showSortDialog() {
+  void _showSortDialog(LocationProvider locationProvider) {
+    // 거리순 정렬은 위치 필터가 활성화되어 있을 때만 표시
+    final availableSortTypes = locationProvider.isLocationFilterEnabled
+        ? SortType.values
+        : SortType.values.where((type) => type != SortType.distance).toList();
+    
     showDialog(
       context: context,
       builder: (context) {
@@ -543,7 +673,7 @@ class _ProductListPageState extends State<ProductListPage> {
           title: const Text('정렬 방식'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
-            children: SortType.values.map((sortType) {
+            children: availableSortTypes.map((sortType) {
               return RadioListTile<SortType>(
                 title: Text(sortType.displayName),
                 value: sortType,
@@ -630,6 +760,9 @@ enum SortType {
 
   /// 인기순
   popular,
+
+  /// 거리순 (위치 필터 활성화 시에만 사용 가능)
+  distance,
 }
 
 /// SortType 확장 메서드
@@ -644,6 +777,8 @@ extension SortTypeExtension on SortType {
         return '가격 높은순';
       case SortType.popular:
         return '인기순';
+      case SortType.distance:
+        return '거리순';
     }
   }
 }

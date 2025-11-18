@@ -18,9 +18,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:flutter_sandbox/models/product.dart';
 import 'package:flutter_sandbox/pages/chat_page.dart';
+import 'package:flutter_sandbox/pages/map_page.dart';
 import 'package:flutter_sandbox/providers/email_auth_provider.dart';
+import 'package:flutter_sandbox/providers/location_provider.dart';
 import 'package:flutter_sandbox/config/app_config.dart';
 import 'package:flutter_sandbox/services/local_app_repository.dart';
 
@@ -276,18 +279,55 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                   const SizedBox(height: 24),
 
                   // 위치 정보
-                  Row(
-                    children: [
-                      Icon(Icons.location_on, size: 20, color: Colors.grey[700]),
-                      const SizedBox(width: 8),
-                      Text(
-                        widget.product.location,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[700],
+                  Consumer<LocationProvider>(
+                    builder: (context, locationProvider, child) {
+                      String distanceText = '';
+                      if (locationProvider.isLocationFilterEnabled &&
+                          locationProvider.filterLatitude != null &&
+                          locationProvider.filterLongitude != null &&
+                          widget.product.x != 0.0 &&
+                          widget.product.y != 0.0) {
+                        final distance = Geolocator.distanceBetween(
+                          locationProvider.filterLatitude!,
+                          locationProvider.filterLongitude!,
+                          widget.product.x,
+                          widget.product.y,
+                        );
+                        if (distance >= 1000) {
+                          distanceText = ' • ${(distance / 1000).toStringAsFixed(1)}km';
+                        } else {
+                          distanceText = ' • ${distance.toInt()}m';
+                        }
+                      }
+                      
+                      return InkWell(
+                        onTap: () {
+                          // 지도에서 위치 보기
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const MapScreen(),
+                            ),
+                          );
+                        },
+                        child: Row(
+                          children: [
+                            Icon(Icons.location_on, size: 20, color: Colors.grey[700]),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '${widget.product.location}$distanceText',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[700],
+                                ),
+                              ),
+                            ),
+                            Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey[400]),
+                          ],
                         ),
-                      ),
-                    ],
+                      );
+                    },
                   ),
                   const SizedBox(height: 8),
                   Text(

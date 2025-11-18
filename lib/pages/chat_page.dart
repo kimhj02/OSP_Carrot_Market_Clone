@@ -16,8 +16,10 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:flutter_sandbox/config/app_config.dart';
 import 'package:flutter_sandbox/providers/email_auth_provider.dart';
+import 'package:flutter_sandbox/providers/location_provider.dart';
 import 'package:flutter_sandbox/services/local_app_repository.dart';
 import 'package:flutter_sandbox/models/firestore_schema.dart';
 
@@ -143,6 +145,94 @@ class _ChatPageState extends State<ChatPage> {
         userId: _currentUserId!,
       );
     }
+  }
+
+  /// 위치 정보 메시지 전송
+  Future<void> _sendLocationMessage() async {
+    if (_isSending || _currentUserId == null) return;
+
+    try {
+      setState(() => _isSending = true);
+
+      final locationProvider = context.read<LocationProvider>();
+      String locationMessage = '위치 정보를 공유합니다';
+      
+      if (locationProvider.isLocationFilterEnabled &&
+          locationProvider.filterLatitude != null &&
+          locationProvider.filterLongitude != null) {
+        final latitude = locationProvider.filterLatitude!;
+        final longitude = locationProvider.filterLongitude!;
+        locationMessage = '위치: 위도 $latitude, 경도 $longitude\n지도에서 확인하기: https://www.google.com/maps?q=$latitude,$longitude';
+      } else {
+        // 현재 위치 가져오기
+        final hasPermission = await _checkLocationPermission();
+        if (hasPermission) {
+          try {
+            final position = await Geolocator.getCurrentPosition(
+              desiredAccuracy: LocationAccuracy.high,
+            );
+            locationMessage = '위치: 위도 ${position.latitude}, 경도 ${position.longitude}\n지도에서 확인하기: https://www.google.com/maps?q=${position.latitude},${position.longitude}';
+          } catch (e) {
+            _showSnackBar('위치 정보를 가져올 수 없습니다');
+            return;
+          }
+        } else {
+          _showSnackBar('위치 권한이 필요합니다');
+          return;
+        }
+      }
+
+      if (AppConfig.useFirebase) {
+        await FirebaseFirestore.instance
+            .collection(ChatConstants.chatRoomsCollection)
+            .doc(widget.chatRoomId)
+            .collection(ChatConstants.messagesCollection)
+            .add({
+          'senderId': _currentUserId,
+          'text': locationMessage,
+          'createdAt': FieldValue.serverTimestamp(),
+          'isRead': false,
+        });
+      } else {
+        await LocalAppRepository.instance.sendMessage(
+          roomId: widget.chatRoomId,
+          text: locationMessage,
+          senderUid: _currentUserId!,
+        );
+      }
+
+      _messageController.clear();
+      _scrollToBottom();
+    } catch (e) {
+      debugPrint('위치 메시지 전송 실패: $e');
+      _showSnackBar('위치 정보 전송에 실패했습니다');
+    } finally {
+      if (mounted) {
+        setState(() => _isSending = false);
+      }
+    }
+  }
+
+  /// 위치 권한 확인
+  Future<bool> _checkLocationPermission() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      return false;
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        return false;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      return false;
+    }
+
+    return true;
   }
 
   /// 메시지 전송
@@ -290,6 +380,7 @@ class _ChatPageState extends State<ChatPage> {
           _ChatInput(
             controller: _messageController,
             onSend: _sendMessage,
+            onSendLocation: _sendLocationMessage,
             isSending: _isSending,
           ),
         ],
@@ -536,11 +627,13 @@ class _MessageBubble extends StatelessWidget {
 class _ChatInput extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback onSend;
+  final VoidCallback onSendLocation;
   final bool isSending;
 
   const _ChatInput({
     required this.controller,
     required this.onSend,
+    required this.onSendLocation,
     required this.isSending,
   });
 
@@ -558,6 +651,12 @@ class _ChatInput extends StatelessWidget {
         ),
         child: Row(
           children: [
+            /// 위치 공유 버튼
+            IconButton(
+              icon: const Icon(Icons.location_on, color: Colors.teal),
+              onPressed: isSending ? null : onSendLocation,
+              tooltip: '위치 공유',
+            ),
             /// 입력창
             Expanded(
               child: Container(

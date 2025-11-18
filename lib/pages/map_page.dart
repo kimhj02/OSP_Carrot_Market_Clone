@@ -6,9 +6,11 @@ import 'package:flutter/services.dart' show NetworkAssetBundle, rootBundle;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import 'package:flutter_sandbox/models/firestore_schema.dart';
 import 'package:flutter_sandbox/pages/product_detail_page.dart';
 import 'package:flutter_sandbox/services/local_app_repository.dart';
+import 'package:flutter_sandbox/providers/location_provider.dart';
 
 class MapScreen extends StatefulWidget {
   final bool moveToCurrentLocationOnInit;
@@ -35,9 +37,6 @@ class _MapScreenState extends State<MapScreen> {
     super.initState();
     // 초기 위치 설정 (지도 표시를 위해 필요)
     _currentPosition = kumoh;
-    if (!widget.moveToCurrentLocationOnInit) {
-      _refreshListings(kumoh);
-    }
   }
 
   void _onMapCreated(GoogleMapController controller) {
@@ -45,6 +44,27 @@ class _MapScreenState extends State<MapScreen> {
     // 지도가 생성된 후 현재 위치로 이동해야 하는 경우
     if (widget.moveToCurrentLocationOnInit) {
       _moveToCurrentLocation(false);
+    } else {
+      // LocationProvider의 필터 설정에 따라 지도 업데이트
+      final locationProvider = context.read<LocationProvider>();
+      if (locationProvider.isLocationFilterEnabled &&
+          locationProvider.filterLatitude != null &&
+          locationProvider.filterLongitude != null) {
+        final filterCenter = LatLng(
+          locationProvider.filterLatitude!,
+          locationProvider.filterLongitude!,
+        );
+        _currentPosition = filterCenter;
+        _mapController?.animateCamera(
+          CameraUpdate.newCameraPosition(
+            CameraPosition(
+              target: filterCenter,
+              zoom: 17,
+            ),
+          ),
+        );
+        _refreshListings(filterCenter, locationProvider);
+      }
     }
   }
 
@@ -97,7 +117,8 @@ class _MapScreenState extends State<MapScreen> {
           ),
         ),
       );
-    _refreshListings(kumoh);
+    final locationProvider = context.read<LocationProvider>();
+    _refreshListings(kumoh, locationProvider);
     return;
   }
 
@@ -129,13 +150,20 @@ class _MapScreenState extends State<MapScreen> {
       ),
     );
 
-    _refreshListings(LatLng(position.latitude, position.longitude));
+    final locationProvider = context.read<LocationProvider>();
+    _refreshListings(LatLng(position.latitude, position.longitude), locationProvider);
    }
 
 
-  Future<void> _refreshListings(LatLng center) async {
+  Future<void> _refreshListings(LatLng center, LocationProvider locationProvider) async {
     final listings = _repository.getAllListings();
     final pins = <_ListingPin>[];
+    
+    // LocationProvider의 검색 반경 사용 (필터가 활성화된 경우)
+    final searchRadius = locationProvider.isLocationFilterEnabled
+        ? locationProvider.searchRadius
+        : _searchRadiusMeters;
+    
     for (final listing in listings) {
       final points =
           listing.meetLocations.isEmpty ? [listing.location] : listing.meetLocations;
@@ -147,7 +175,7 @@ class _MapScreenState extends State<MapScreen> {
           point.latitude,
           point.longitude,
         );
-        if (distance <= _searchRadiusMeters) {
+        if (distance <= searchRadius) {
           pins.add(
             _ListingPin(
               listing: listing,
@@ -220,20 +248,47 @@ class _MapScreenState extends State<MapScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('내 주변 보기')),
-      body: _currentPosition == null
-          ? const Center(child: CircularProgressIndicator())
-          : GoogleMap(
-
-        onMapCreated: _onMapCreated,
-        initialCameraPosition:
-        CameraPosition(target: _currentPosition!, zoom: 17),
-        myLocationEnabled: true,
-        markers: _buildMarkers(),
-
-
-      ),
+    return Consumer<LocationProvider>(
+      builder: (context, locationProvider, child) {
+        // LocationProvider가 변경될 때마다 지도 업데이트
+        if (locationProvider.isLocationFilterEnabled &&
+            locationProvider.filterLatitude != null &&
+            locationProvider.filterLongitude != null) {
+          final filterCenter = LatLng(
+            locationProvider.filterLatitude!,
+            locationProvider.filterLongitude!,
+          );
+          if (_currentPosition != filterCenter) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _currentPosition = filterCenter;
+              _mapController?.animateCamera(
+                CameraUpdate.newCameraPosition(
+                  CameraPosition(
+                    target: filterCenter,
+                    zoom: 17,
+                  ),
+                ),
+              );
+              _refreshListings(filterCenter, locationProvider);
+            });
+          }
+        } else if (!widget.moveToCurrentLocationOnInit && _currentPosition == kumoh) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _refreshListings(kumoh, locationProvider);
+          });
+        }
+        
+        return Scaffold(
+          appBar: AppBar(title: const Text('내 주변 보기')),
+          body: _currentPosition == null
+              ? const Center(child: CircularProgressIndicator())
+              : GoogleMap(
+                  onMapCreated: _onMapCreated,
+                  initialCameraPosition:
+                      CameraPosition(target: _currentPosition!, zoom: 17),
+                  myLocationEnabled: true,
+                  markers: _buildMarkers(),
+                ),
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 80),
         child: Column(
@@ -273,6 +328,8 @@ class _MapScreenState extends State<MapScreen> {
             ]
         ),
       ),
+        );
+      },
     );
   }
 }
