@@ -191,13 +191,96 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  /// 메시지 전송 핵심 로직 (공통 헬퍼 함수)
+  Future<void> _sendMessageCore(String messageText) async {
+    if (_isSending || _currentUserId == null) return;
+
+    setState(() => _isSending = true);
+
+    try {
+      if (AppConfig.useFirebase) {
+        final chatRoomDoc = await FirebaseFirestore.instance
+            .collection(ChatConstants.chatRoomsCollection)
+            .doc(widget.chatRoomId)
+            .get();
+
+        if (!chatRoomDoc.exists) {
+          throw Exception('채팅방을 찾을 수 없습니다');
+        }
+
+        final participants = List<String>.from(
+            chatRoomDoc.data()?['participants'] ?? []
+        );
+        
+        // 받는 사람 목록 (본인 제외)
+        final recipientIds = participants.where((id) => id != _currentUserId).toList();
+
+        // 메시지 추가
+        await FirebaseFirestore.instance
+            .collection(ChatConstants.chatRoomsCollection)
+            .doc(widget.chatRoomId)
+            .collection(ChatConstants.messagesCollection)
+            .add({
+          'senderId': _currentUserId,
+          'text': messageText,
+          'createdAt': FieldValue.serverTimestamp(),
+          'isRead': false,
+        });
+
+        // 읽지 않은 메시지 수 업데이트 (모든 참여자에게)
+        final unreadCountUpdates = <String, dynamic>{};
+        for (final recipientId in recipientIds) {
+          unreadCountUpdates['${ChatConstants.unreadCount}.$recipientId'] = FieldValue.increment(1);
+        }
+
+        // 채팅방 문서 업데이트 (lastMessage, lastMessageTime, unreadCount)
+        await FirebaseFirestore.instance
+            .collection(ChatConstants.chatRoomsCollection)
+            .doc(widget.chatRoomId)
+            .update({
+          ChatConstants.lastMessage: messageText,
+          ChatConstants.lastMessageTime: FieldValue.serverTimestamp(),
+          ...unreadCountUpdates,
+        });
+
+        // 알림 전송 (모든 참여자에게)
+        final senderName = context.read<EmailAuthProvider>().user?.displayName ?? '알 수 없음';
+        for (final recipientId in recipientIds) {
+          if (recipientId.isNotEmpty) {
+            await FCMService().sendChatNotification(
+              recipientUid: recipientId,
+              senderName: senderName,
+              message: messageText,
+              chatRoomId: widget.chatRoomId,
+            );
+          }
+        }
+      } else {
+        // 로컬 모드
+        await LocalAppRepository.instance.sendMessage(
+          roomId: widget.chatRoomId,
+          senderUid: _currentUserId!,
+          text: messageText,
+        );
+      }
+
+      _scrollToBottom();
+    } catch (e) {
+      debugPrint('메시지 전송 실패: $e');
+      _showSnackBar('메시지 전송에 실패했습니다');
+      rethrow;
+    } finally {
+      if (mounted) {
+        setState(() => _isSending = false);
+      }
+    }
+  }
+
   /// 위치 정보 메시지 전송
   Future<void> _sendLocationMessage() async {
     if (_isSending || _currentUserId == null) return;
 
     try {
-      setState(() => _isSending = true);
-
       final locationProvider = context.read<LocationProvider>();
       String locationMessage = '위치 정보를 공유합니다';
       
@@ -226,34 +309,11 @@ class _ChatPageState extends State<ChatPage> {
         }
       }
 
-      if (AppConfig.useFirebase) {
-        await FirebaseFirestore.instance
-            .collection(ChatConstants.chatRoomsCollection)
-            .doc(widget.chatRoomId)
-            .collection(ChatConstants.messagesCollection)
-            .add({
-          'senderId': _currentUserId,
-          'text': locationMessage,
-          'createdAt': FieldValue.serverTimestamp(),
-          'isRead': false,
-        });
-      } else {
-        await LocalAppRepository.instance.sendMessage(
-          roomId: widget.chatRoomId,
-          text: locationMessage,
-          senderUid: _currentUserId!,
-        );
-      }
-
-      _messageController.clear();
-      _scrollToBottom();
+      // 공통 메시지 전송 로직 사용
+      await _sendMessageCore(locationMessage);
     } catch (e) {
       debugPrint('위치 메시지 전송 실패: $e');
       _showSnackBar('위치 정보 전송에 실패했습니다');
-    } finally {
-      if (mounted) {
-        setState(() => _isSending = false);
-      }
     }
   }
 
@@ -287,83 +347,15 @@ class _ChatPageState extends State<ChatPage> {
       return;
     }
 
-    setState(() => _isSending = true);
-
     try {
-      if (AppConfig.useFirebase) {
-        final chatRoomDoc = await FirebaseFirestore.instance
-            .collection(ChatConstants.chatRoomsCollection)
-            .doc(widget.chatRoomId)
-            .get();
-
-        if (!chatRoomDoc.exists) {
-          throw Exception('채팅방을 찾을 수 없습니다');
-        }
-
-        final participants = List<String>.from(
-            chatRoomDoc.data()?['participants'] ?? []
-        );
-        
-        // 받는 사람 목록 (본인 제외)
-        final recipientIds = participants.where((id) => id != _currentUserId).toList();
-
-        await FirebaseFirestore.instance
-            .collection(ChatConstants.chatRoomsCollection)
-            .doc(widget.chatRoomId)
-            .collection(ChatConstants.messagesCollection)
-            .add({
-          'senderId': _currentUserId,
-          'text': message,
-          'createdAt': FieldValue.serverTimestamp(),
-          'isRead': false,
-        });
-
-        // 읽지 않은 메시지 수 업데이트 (모든 참여자에게)
-        final unreadCountUpdates = <String, dynamic>{};
-        for (final recipientId in recipientIds) {
-          unreadCountUpdates['${ChatConstants.unreadCount}.$recipientId'] = FieldValue.increment(1);
-        }
-
-        await FirebaseFirestore.instance
-            .collection(ChatConstants.chatRoomsCollection)
-            .doc(widget.chatRoomId)
-            .update({
-          ChatConstants.lastMessage: message,
-          ChatConstants.lastMessageTime: FieldValue.serverTimestamp(),
-          ...unreadCountUpdates,
-        });
-
-        // 알림 전송 (모든 참여자에게)
-        final senderName = context.read<EmailAuthProvider>().user?.displayName ?? '알 수 없음';
-        for (final recipientId in recipientIds) {
-          if (recipientId.isNotEmpty) {
-            await FCMService().sendChatNotification(
-              recipientUid: recipientId,
-              senderName: senderName,
-              message: message,
-              chatRoomId: widget.chatRoomId,
-            );
-          }
-        }
-      } else {
-        await LocalAppRepository.instance.sendMessage(
-          roomId: widget.chatRoomId,
-          senderUid: _currentUserId!,
-          text: message,
-        );
-      }
-
+      // 공통 메시지 전송 로직 사용
+      await _sendMessageCore(message);
+      
       /// 입력창 초기화
       _messageController.clear();
-
-      _scrollToBottom();
     } catch (e) {
       debugPrint('메시지 전송 실패: $e');
       _showSnackBar('메시지 전송에 실패했습니다');
-    } finally {
-      if (mounted) {
-        setState(() => _isSending = false);
-      }
     }
   }
 
