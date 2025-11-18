@@ -172,22 +172,29 @@ class Listing {
   });
 
   Listing copyWith({
+    String? title,
+    int? price,
     ListingStatus? status,
     int? likeCount,
     int? viewCount,
     DateTime? updatedAt,
     Set<String>? likedUserIds,
     List<AppGeoPoint>? meetLocations,
+    List<String>? images,
+    ProductCategory? category,
+    String? description,
+    AppGeoPoint? location,
+    GroupBuyInfo? groupBuy,
   }) {
     return Listing(
       id: id,
       type: type,
-      title: title,
-      price: price,
-      location: location,
+      title: title ?? this.title,
+      price: price ?? this.price,
+      location: location ?? this.location,
       meetLocations: meetLocations ?? this.meetLocations,
-      images: images,
-      category: category,
+      images: images ?? this.images,
+      category: category ?? this.category,
       status: status ?? this.status,
       region: region,
       universityId: universityId,
@@ -196,11 +203,11 @@ class Listing {
       sellerPhotoUrl: sellerPhotoUrl,
       likeCount: likeCount ?? this.likeCount,
       viewCount: viewCount ?? this.viewCount,
-      description: description,
+      description: description ?? this.description,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       likedUserIds: likedUserIds ?? this.likedUserIds,
-      groupBuy: groupBuy,
+      groupBuy: groupBuy ?? this.groupBuy,
     );
   }
 }

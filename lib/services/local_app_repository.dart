@@ -244,6 +244,45 @@ class LocalAppRepository {
     _listings.remove(listingId);
   }
 
+  Future<void> updateListing({
+    required String listingId,
+    String? title,
+    int? price,
+    List<AppGeoPoint>? meetLocations,
+    List<String>? images,
+    ProductCategory? category,
+    String? description,
+    ListingStatus? status,
+    GroupBuyInfo? groupBuy,
+  }) async {
+    final listing = _listings[listingId];
+    if (listing == null) {
+      throw ArgumentError('상품을 찾을 수 없습니다.');
+    }
+
+    final updatedListing = listing.copyWith(
+      title: title ?? listing.title,
+      price: price ?? listing.price,
+      meetLocations: meetLocations ?? listing.meetLocations,
+      images: images ?? listing.images,
+      category: category ?? listing.category,
+      description: description ?? listing.description,
+      status: status ?? listing.status,
+      groupBuy: groupBuy ?? listing.groupBuy,
+      updatedAt: DateTime.now(),
+    );
+
+    // 위치가 변경된 경우 location도 업데이트
+    if (meetLocations != null && meetLocations.isNotEmpty) {
+      _listings[listingId] = updatedListing.copyWith(
+        location: meetLocations.first,
+        meetLocations: meetLocations,
+      );
+    } else {
+      _listings[listingId] = updatedListing;
+    }
+  }
+
   void toggleFavorite(String listingId, String userId) {
     final listing = _listings[listingId];
     if (listing == null) return;

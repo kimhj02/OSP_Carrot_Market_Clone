@@ -24,9 +24,11 @@ import 'package:provider/provider.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter_sandbox/models/product.dart';
+import 'package:flutter_sandbox/models/firestore_schema.dart';
 import 'package:flutter_sandbox/pages/chat_page.dart';
 import 'package:flutter_sandbox/pages/map_page.dart';
 import 'package:flutter_sandbox/pages/seller_profile_page.dart';
+import 'package:flutter_sandbox/pages/product_edit_page.dart';
 import 'package:flutter_sandbox/providers/email_auth_provider.dart';
 import 'package:flutter_sandbox/providers/location_provider.dart';
 import 'package:flutter_sandbox/config/app_config.dart';
@@ -36,7 +38,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' hide EmailAuthProvider;
 
 enum _ProductMoreAction {
+  edit,
   delete,
+  changeStatus,
 }
 
 /// 상품 상세 정보를 표시하는 페이지
@@ -119,8 +123,14 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
             enabled: !_isDeleting,
             onSelected: (action) {
               switch (action) {
+                case _ProductMoreAction.edit:
+                  _navigateToEditPage();
+                  break;
                 case _ProductMoreAction.delete:
                   _confirmDeleteProduct();
+                  break;
+                case _ProductMoreAction.changeStatus:
+                  _showStatusChangeDialog();
                   break;
               }
             },
@@ -129,9 +139,36 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
               if (_canDeleteProduct) {
                 entries.add(
                   PopupMenuItem<_ProductMoreAction>(
+                    value: _ProductMoreAction.edit,
+                    child: const Row(
+                      children: [
+                        Icon(Icons.edit_outlined, color: Colors.teal),
+                        SizedBox(width: 12),
+                        Text('상품 수정'),
+                      ],
+                    ),
+                  ),
+                );
+                entries.add(
+                  PopupMenuItem<_ProductMoreAction>(
+                    value: _ProductMoreAction.changeStatus,
+                    child: const Row(
+                      children: [
+                        Icon(Icons.swap_horiz, color: Colors.orange),
+                        SizedBox(width: 12),
+                        Text('상태 변경'),
+                      ],
+                    ),
+                  ),
+                );
+                entries.add(
+                  const PopupMenuDivider(),
+                );
+                entries.add(
+                  PopupMenuItem<_ProductMoreAction>(
                     value: _ProductMoreAction.delete,
-                    child: Row(
-                      children: const [
+                    child: const Row(
+                      children: [
                         Icon(Icons.delete_outline, color: Colors.redAccent),
                         SizedBox(width: 12),
                         Text('상품 삭제'),
@@ -143,7 +180,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                 entries.add(
                   const PopupMenuItem<_ProductMoreAction>(
                     enabled: false,
-                    child: Text('삭제 권한이 없습니다'),
+                    child: Text('수정 권한이 없습니다'),
                   ),
                 );
               }
@@ -776,6 +813,118 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         return Colors.orange;
       case ProductStatus.sold:
         return Colors.grey;
+    }
+  }
+
+  /// 수정 페이지로 이동
+  Future<void> _navigateToEditPage() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ProductEditPage(product: widget.product),
+      ),
+    );
+    
+    if (result == true && mounted) {
+      // 수정 완료 후 상품 정보 새로고침
+      Navigator.pop(context, true);
+    }
+  }
+
+  /// 상태 변경 다이얼로그 표시
+  void _showStatusChangeDialog() {
+    final currentStatus = widget.product.status;
+    final availableStatuses = <ProductStatus>[];
+    
+    // 현재 상태에 따라 변경 가능한 상태 목록 생성
+    switch (currentStatus) {
+      case ProductStatus.onSale:
+        availableStatuses.addAll([ProductStatus.reserved, ProductStatus.sold]);
+        break;
+      case ProductStatus.reserved:
+        availableStatuses.addAll([ProductStatus.onSale, ProductStatus.sold]);
+        break;
+      case ProductStatus.sold:
+        availableStatuses.add(ProductStatus.onSale);
+        break;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('상품 상태 변경'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: availableStatuses.map((status) {
+              return ListTile(
+                title: Text(_getStatusText(status)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _changeProductStatus(status);
+                },
+              );
+            }).toList(),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('취소'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// 상태 텍스트 반환
+  String _getStatusText(ProductStatus status) {
+    switch (status) {
+      case ProductStatus.onSale:
+        return '판매중';
+      case ProductStatus.reserved:
+        return '예약중';
+      case ProductStatus.sold:
+        return '판매완료';
+    }
+  }
+
+  /// 상품 상태 변경
+  Future<void> _changeProductStatus(ProductStatus newStatus) async {
+    try {
+      ListingStatus listingStatus;
+      switch (newStatus) {
+        case ProductStatus.onSale:
+          listingStatus = ListingStatus.onSale;
+          break;
+        case ProductStatus.reserved:
+          listingStatus = ListingStatus.reserved;
+          break;
+        case ProductStatus.sold:
+          listingStatus = ListingStatus.sold;
+          break;
+      }
+
+      if (AppConfig.useFirebase) {
+        await FirebaseFirestore.instance
+            .collection('products')
+            .doc(widget.product.id)
+            .update({'status': listingStatus.index});
+      } else {
+        await LocalAppRepository.instance.updateListing(
+          listingId: widget.product.id,
+          status: listingStatus,
+        );
+      }
+
+      if (mounted) {
+        _showSnackBar('상품 상태가 변경되었습니다');
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar('상태 변경에 실패했습니다: $e');
+      }
     }
   }
 
