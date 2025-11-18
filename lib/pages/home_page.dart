@@ -541,7 +541,22 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _selectCurrentLocation() async {
-    // 로딩 다이얼로그 표시
+    final locationProvider = context.read<LocationProvider>();
+    
+    // 캐시된 위치가 있으면 즉시 사용 (즉시 UI 업데이트)
+    if (locationProvider.currentLatitude != null && 
+        locationProvider.currentLongitude != null) {
+      locationProvider.setCurrentLocation(
+        locationProvider.currentLatitude!,
+        locationProvider.currentLongitude!,
+      );
+      
+      // 백그라운드에서 최신 위치 가져오기
+      _updateCurrentLocationInBackground();
+      return;
+    }
+
+    // 캐시된 위치가 없으면 위치 가져오기
     if (!mounted) return;
     showDialog(
       context: context,
@@ -587,14 +602,14 @@ class _HomePageState extends State<HomePage> {
       
       if (!mounted) return;
       
-      context.read<LocationProvider>().setCurrentLocation(
+      locationProvider.setCurrentLocation(
         position.latitude,
         position.longitude,
       );
       
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('현재 위치 주변 ${context.read<LocationProvider>().searchRadiusText} 내 상품을 표시합니다'),
+          content: Text('현재 위치 주변 ${locationProvider.searchRadiusText} 내 상품을 표시합니다'),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -620,6 +635,44 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
       );
+    }
+  }
+
+  /// 백그라운드에서 현재 위치를 업데이트하는 메서드
+  Future<void> _updateCurrentLocationInBackground() async {
+    try {
+      final hasPermission = await _handleLocationPermission();
+      if (!hasPermission || !mounted) return;
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium, // 빠른 응답을 위해 medium 사용
+        timeLimit: const Duration(seconds: 5),
+      );
+      
+      if (!mounted) return;
+      
+      final locationProvider = context.read<LocationProvider>();
+      // 위치가 크게 변경되었을 때만 업데이트 (100m 이상)
+      if (locationProvider.currentLatitude != null && 
+          locationProvider.currentLongitude != null) {
+        final distance = Geolocator.distanceBetween(
+          locationProvider.currentLatitude!,
+          locationProvider.currentLongitude!,
+          position.latitude,
+          position.longitude,
+        );
+        
+        // 100m 이상 이동했을 때만 업데이트
+        if (distance < 100) return;
+      }
+      
+      locationProvider.setCurrentLocation(
+        position.latitude,
+        position.longitude,
+      );
+    } catch (e) {
+      // 백그라운드 업데이트 실패는 무시 (사용자 경험에 영향 없음)
+      debugPrint('백그라운드 위치 업데이트 실패: $e');
     }
   }
 

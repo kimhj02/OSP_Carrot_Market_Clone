@@ -26,6 +26,8 @@ import 'package:flutter_sandbox/pages/home_page.dart';
 import 'package:flutter_sandbox/pages/verify_email_page.dart';
 import 'package:flutter_sandbox/pages/email_auth_page.dart';
 import 'package:flutter_sandbox/services/local_app_repository.dart';
+import 'package:flutter_sandbox/services/fcm_service.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 /// 앱의 메인 진입점
 ///
@@ -47,6 +49,13 @@ Future<void> main() async {
         options: DefaultFirebaseOptions.currentPlatform,
       );
       print('✅ Firebase 초기화 성공');
+      
+      // FCM 백그라운드 핸들러 등록
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+      
+      // FCM 서비스 초기화
+      await FCMService().initialize();
+      print('✅ FCM 초기화 성공');
     } catch (e) {
       // 초기화 실패 시에도 앱이 구동되도록 경고만 출력
       print('⚠️ Firebase 초기화 실패: $e');

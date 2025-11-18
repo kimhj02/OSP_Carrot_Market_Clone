@@ -20,6 +20,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_sandbox/config/app_config.dart';
 import 'package:flutter_sandbox/models/firestore_schema.dart';
 import 'package:flutter_sandbox/services/local_app_repository.dart';
+import 'package:flutter_sandbox/services/fcm_service.dart';
 
 /// 이메일 인증 상태를 관리하는 Provider 클래스
 ///
@@ -97,6 +98,10 @@ class EmailAuthProvider with ChangeNotifier {
             // 실패 시 이메일 도메인으로부터 추론
             _user = _mapFirebaseUser(user);
           }
+          
+          // FCM 토큰 저장
+          await FCMService().saveTokenForUser(user.uid);
+          
           notifyListeners();
         }
       });

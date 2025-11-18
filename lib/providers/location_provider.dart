@@ -203,22 +203,22 @@ class LocationProvider with ChangeNotifier {
     _currentLatitude = latitude;
     _currentLongitude = longitude;
     _filterType = LocationFilterType.currentLocation;
-    _saveSettings();
-    notifyListeners();
+    notifyListeners(); // 즉시 UI 업데이트
+    _saveSettings(); // 백그라운드에서 저장 (await 없이)
   }
 
   /// 학교 위치로 설정합니다.
   void setSchoolLocation() {
     _filterType = LocationFilterType.school;
-    _saveSettings();
-    notifyListeners();
+    notifyListeners(); // 즉시 UI 업데이트
+    _saveSettings(); // 백그라운드에서 저장 (await 없이)
   }
 
   /// 필터링을 해제합니다 (전체 지역 보기).
   void clearLocationFilter() {
     _filterType = LocationFilterType.none;
-    _saveSettings();
-    notifyListeners();
+    notifyListeners(); // 즉시 UI 업데이트
+    _saveSettings(); // 백그라운드에서 저장 (await 없이)
   }
 
   /// 검색 반경을 설정합니다.
@@ -228,8 +228,8 @@ class LocationProvider with ChangeNotifier {
   void setSearchRadius(double radius) {
     if (searchRadiusOptions.contains(radius)) {
       _searchRadiusMeters = radius;
-      _saveSettings();
-      notifyListeners();
+      notifyListeners(); // 즉시 UI 업데이트
+      _saveSettings(); // 백그라운드에서 저장 (await 없이)
     }
   }
 }

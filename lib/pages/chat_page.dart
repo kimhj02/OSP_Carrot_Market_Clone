@@ -21,6 +21,7 @@ import 'package:flutter_sandbox/config/app_config.dart';
 import 'package:flutter_sandbox/providers/email_auth_provider.dart';
 import 'package:flutter_sandbox/providers/location_provider.dart';
 import 'package:flutter_sandbox/services/local_app_repository.dart';
+import 'package:flutter_sandbox/services/fcm_service.dart';
 import 'package:flutter_sandbox/models/firestore_schema.dart';
 
 /// Firestore 컬렉션 및 필드 상수
@@ -283,6 +284,17 @@ class _ChatPageState extends State<ChatPage> {
           ChatConstants.lastMessageTime: FieldValue.serverTimestamp(),
           '${ChatConstants.unreadCount}.$recipientId': FieldValue.increment(1),
         });
+
+        // 알림 전송
+        if (recipientId.isNotEmpty) {
+          final senderName = context.read<EmailAuthProvider>().user?.displayName ?? '알 수 없음';
+          await FCMService().sendChatNotification(
+            recipientUid: recipientId,
+            senderName: senderName,
+            message: message,
+            chatRoomId: widget.chatRoomId,
+          );
+        }
       } else {
         await LocalAppRepository.instance.sendMessage(
           roomId: widget.chatRoomId,

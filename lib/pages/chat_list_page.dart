@@ -14,6 +14,7 @@
 /// @since 2024-01-01
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_sandbox/pages/chat_page.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
@@ -123,7 +124,6 @@ class ChatListPage extends StatefulWidget {
 class _ChatListPageState extends State<ChatListPage> {
   ChatFilter _selectedFilter = ChatFilter.all;
   ChatSortType _sortType = ChatSortType.latest;
-  bool _showSavedMessages = false;
   bool _notificationsEnabled = true;
 
   @override
@@ -156,25 +156,6 @@ class _ChatListPageState extends State<ChatListPage> {
           IconButton(
             icon: const Icon(Icons.tune, color: Colors.black),
             onPressed: () => _showSortDialog(),
-          ),
-          IconButton(
-            icon: Icon(
-              _showSavedMessages ? Icons.bookmark : Icons.bookmark_border,
-              color: Colors.black,
-            ),
-            onPressed: () {
-              setState(() {
-                _showSavedMessages = !_showSavedMessages;
-              });
-              if (_showSavedMessages) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('저장된 메시지 기능은 준비 중입니다'),
-                    duration: Duration(seconds: 2),
-                  ),
-                );
-              }
-            },
           ),
           IconButton(
             icon: Icon(
@@ -444,6 +425,9 @@ class _ChatListPageState extends State<ChatListPage> {
 
   /// 알림 설정 다이얼로그 표시
   void _showNotificationSettings() {
+    final currentUserId = context.read<EmailAuthProvider>().user?.uid;
+    if (currentUserId == null) return;
+
     showDialog(
       context: context,
       builder: (context) {
@@ -462,6 +446,18 @@ class _ChatListPageState extends State<ChatListPage> {
                   this.setState(() {
                     _notificationsEnabled = value;
                   });
+                  
+                  // Firestore에 알림 설정 저장
+                  if (AppConfig.useFirebase) {
+                    FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(currentUserId)
+                        .update({
+                      'notificationsEnabled': value,
+                    }).catchError((e) {
+                      debugPrint('알림 설정 저장 실패: $e');
+                    });
+                  }
                 },
               );
             },
