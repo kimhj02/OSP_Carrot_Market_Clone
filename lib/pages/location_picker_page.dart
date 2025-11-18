@@ -107,9 +107,12 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _onConfirm,
-        label: Text(_selectedLocations.isEmpty ? '위치 추가' : '추가 완료'),
+        onPressed: _selectedLocations.isEmpty ? null : _onConfirm,
+        label: Text(_selectedLocations.isEmpty ? '위치를 선택하세요' : '추가 완료'),
         icon: const Icon(Icons.check),
+        tooltip: _selectedLocations.isEmpty 
+            ? '지도를 탭하여 위치를 선택하세요' 
+            : '선택한 위치로 완료',
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
     );
