@@ -123,7 +123,7 @@ class LocalAppRepository {
     
     // 마포구 망원동 경계 (대략적인 범위)
     if (latitude >= 37.5450 && latitude <= 37.5650 &&
-        longitude >= 127.9000 && longitude <= 127.9200) {
+        longitude >= 126.9000 && longitude <= 126.9200) {
       return '마포구 망원동';
     }
     
@@ -132,7 +132,6 @@ class LocalAppRepository {
         longitude >= 128.3800 && longitude <= 128.4100) {
       return '구미시 인동동';
     }
-    
     // 경계에 속하지 않으면 가장 가까운 지역을 찾음
     Region? closestRegion;
     double minDistance = double.infinity;
