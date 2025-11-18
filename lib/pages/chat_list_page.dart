@@ -141,65 +141,89 @@ class _ChatListPageState extends State<ChatListPage> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: const Text(
-          '채팅',
-          style: TextStyle(
-            color: Colors.black,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.tune, color: Colors.black),
-            onPressed: () => _showSortDialog(),
-          ),
-          IconButton(
-            icon: Icon(
-              _notificationsEnabled
-                  ? Icons.notifications
-                  : Icons.notifications_off,
-              color: Colors.black,
-            ),
-            onPressed: () => _showNotificationSettings(),
-          ),
-        ],
-      ),
-      body: Column(
+      backgroundColor: Colors.grey[50],
+      body: SafeArea(
+        child: Column(
         children: [
-          // 필터 버튼들
+          // 헤더와 필터 버튼들
           _buildFilterButtons(),
 
           // 채팅 리스트
           Expanded(
-            child: _buildChatList(currentUserId),
+            child: Container(
+              color: Colors.white,
+              child: _buildChatList(currentUserId),
+            ),
           ),
         ],
+        ),
       ),
     );
   }
 
   /// 필터 버튼 영역
   Widget _buildFilterButtons() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            _buildFilterButton('전체', ChatFilter.all),
-            const SizedBox(width: 8),
-            _buildFilterButton('판매', ChatFilter.selling),
-            const SizedBox(width: 8),
-            _buildFilterButton('구매', ChatFilter.buying),
-            const SizedBox(width: 8),
-            _buildFilterButton('안 읽은 채팅방', ChatFilter.unread),
-          ],
+    return Column(
+      children: [
+        // 헤더 (제목 + 액션 버튼)
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+          child: Row(
+            children: [
+              const Text(
+                '채팅',
+                style: TextStyle(
+                  color: Colors.black87,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.tune, color: Colors.black87, size: 28),
+                iconSize: 28,
+                onPressed: () => _showSortDialog(),
+              ),
+              IconButton(
+                icon: Icon(
+                  _notificationsEnabled
+                      ? Icons.notifications
+                      : Icons.notifications_off,
+                  color: Colors.black87,
+                  size: 28,
+                ),
+                iconSize: 28,
+                onPressed: () => _showNotificationSettings(),
+              ),
+            ],
+          ),
         ),
-      ),
+        // 필터 버튼들
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildFilterButton('전체', ChatFilter.all),
+                const SizedBox(width: 8),
+                _buildFilterButton('판매', ChatFilter.selling),
+                const SizedBox(width: 8),
+                _buildFilterButton('구매', ChatFilter.buying),
+                const SizedBox(width: 8),
+                _buildFilterButton('안 읽은 채팅방', ChatFilter.unread),
+              ],
+            ),
+          ),
+        ),
+        // 구분선
+        Container(
+          height: 1,
+          color: Colors.grey[200],
+        ),
+      ],
     );
   }
 
@@ -216,16 +240,17 @@ class _ChatListPageState extends State<ChatListPage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.black : Colors.white,
+          color: isSelected ? Colors.teal : Colors.white,
           border: Border.all(
-            color: isSelected ? Colors.black : Colors.grey[300]!,
+            color: isSelected ? Colors.teal : Colors.grey[300]!,
+            width: isSelected ? 1.5 : 1,
           ),
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
           label,
           style: TextStyle(
-            color: isSelected ? Colors.white : Colors.black,
+            color: isSelected ? Colors.white : Colors.black87,
             fontSize: 14,
             fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
           ),
@@ -305,9 +330,10 @@ class _ChatListPageState extends State<ChatListPage> {
   Widget _buildChatRoomList(List<ChatRoom> chatRooms, String currentUserId) {
     return ListView.separated(
       itemCount: chatRooms.length,
-      separatorBuilder: (context, index) => const Divider(
+      separatorBuilder: (context, index) => Divider(
         height: 1,
         indent: 80,
+        color: Colors.grey[200],
       ),
       itemBuilder: (context, index) {
         final chatRoom = chatRooms[index];
@@ -553,7 +579,10 @@ class _ChatListItem extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      child: Padding(
+      splashColor: Colors.teal.withOpacity(0.1),
+      highlightColor: Colors.teal.withOpacity(0.05),
+      child: Container(
+        color: Colors.white,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [

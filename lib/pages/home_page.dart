@@ -35,7 +35,6 @@ import 'package:flutter_sandbox/pages/email_auth_page.dart';
 import 'package:flutter_sandbox/pages/map_page.dart';
 import 'package:flutter_sandbox/pages/profile_page.dart';
 import 'package:flutter_sandbox/models/product.dart';
-import 'package:flutter_sandbox/data/mock_products.dart';
 import 'package:flutter_sandbox/providers/ad_provider.dart';
 import 'package:flutter_sandbox/models/ad.dart';
 import 'package:flutter_sandbox/widgets/ad_card.dart';
@@ -93,17 +92,20 @@ class _HomePageState extends State<HomePage> {
     final AppUserProfile? appUser = context.watch<EmailAuthProvider>().user;
     final locationLabel =
         appUser != null ? _resolveLocationLabel(appUser) : '강남구 역삼동';
+    // 채팅(2)과 나의 금오(3) 탭에서는 AppBar 숨김
+    final shouldShowAppBar = IndexedStackState != 2 && IndexedStackState != 3;
     return Scaffold(
+      backgroundColor: Colors.grey[50],
       // 금오 마켓 스타일의 앱바
-      appBar: AppBar(
+      appBar: shouldShowAppBar ? AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
         title: Row(
           children: [
             // 금오 마켓 아이콘
             Container(
-              width: 24,
-              height: 24,
+              width: 32,
+              height: 32,
               decoration: const BoxDecoration(
                 color: Colors.teal,
                 shape: BoxShape.circle,
@@ -111,10 +113,10 @@ class _HomePageState extends State<HomePage> {
               child: const Icon(
                 Icons.local_grocery_store,
                 color: Colors.white,
-                size: 16,
+                size: 20,
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             // 위치 정보
             Row(
               children: [
@@ -143,9 +145,9 @@ class _HomePageState extends State<HomePage> {
                         children: [
                           Text(
                             displayText,
-                            style: TextStyle(
-                              color: Colors.black,
-                              fontSize: 18,
+                            style: const TextStyle(
+                              color: Colors.black87,
+                              fontSize: 24,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -171,9 +173,9 @@ class _HomePageState extends State<HomePage> {
                     } else {
                       return Text(
                         displayText,
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontSize: 18,
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          fontSize: 24,
                           fontWeight: FontWeight.bold,
                         ),
                       );
@@ -184,7 +186,11 @@ class _HomePageState extends State<HomePage> {
                   onTap: () {
                     _showLocationSelectionDialog();
                   },
-                  child: Icon(Icons.keyboard_arrow_down, color: Colors.black),
+                  child: Icon(
+                    Icons.keyboard_arrow_down,
+                    color: Colors.black87,
+                    size: 28,
+                  ),
                 ),
               ],
             ),
@@ -193,7 +199,8 @@ class _HomePageState extends State<HomePage> {
         actions: [
           // 검색 아이콘
           IconButton(
-            icon: const Icon(Icons.search, color: Colors.black),
+            icon: const Icon(Icons.search, color: Colors.black87, size: 28),
+            iconSize: 28,
             onPressed: () {
               Navigator.push(
                 context,
@@ -210,31 +217,7 @@ class _HomePageState extends State<HomePage> {
           //   },
           // ),
         ],
-      ),
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            const DrawerHeader(
-              decoration: BoxDecoration(color: Colors.teal),
-              child: Text(
-                "바로 마켓 메뉴",
-                style: TextStyle(color: Colors.white, fontSize: 20),
-              ),
-            ),
-            ListTile(
-              leading: Icon(Icons.home),
-              title: Text("컨텐츠 1"),
-              onTap: () {},
-            ),
-            ListTile(
-              leading: Icon(Icons.home),
-              title: Text("컨텐츠 2"),
-              onTap: () {},
-            ),
-          ],
-        ),
-      ),
+      ) : null,
 
       // 메인 콘텐츠 영역
       body: IndexedStack(
@@ -250,23 +233,29 @@ class _HomePageState extends State<HomePage> {
               // 로그인 상태에 따른 조건부 UI 렌더링
               return !isLoggedIn
                   ? _buildLoginScreen(loginProvider, context) // 로그인되지 않은 경우
-                  : Column(
-                      children: [
-                        // 위치 필터링 상태 및 상품 개수 표시
-                        _buildLocationFilterInfo(),
-                        // 카테고리 필터 바
-                        _buildCategoryFilter(),
-                        // 메인 콘텐츠
-                        Expanded(
-                          child: _buildMainScreen(
-                            kakaoUser,
-                            loginProvider,
-                            emailUser,
-                            emailAuthProvider,
-                            context,
+                  : Container(
+                      color: Colors.grey[50],
+                      child: Column(
+                        children: [
+                          // 위치 필터링 상태 및 상품 개수 표시
+                          _buildLocationFilterInfo(),
+                          // 카테고리 필터 바
+                          _buildCategoryFilter(),
+                          // 메인 콘텐츠
+                          Expanded(
+                            child: Container(
+                              color: Colors.grey[50],
+                              child: _buildMainScreen(
+                                kakaoUser,
+                                loginProvider,
+                                emailUser,
+                                emailAuthProvider,
+                                context,
+                              ),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ); // 로그인된 경우
             },
           ), //홈
@@ -295,7 +284,7 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
 
-      floatingActionButton: isLoggedIn
+      floatingActionButton: isLoggedIn && shouldShowAppBar
           ? FloatingActionButton(
               backgroundColor: Colors.teal,
               onPressed: _toggleFabMenu,
@@ -891,13 +880,75 @@ class _HomePageState extends State<HomePage> {
           return const SizedBox.shrink();
         }
 
-        // 필터링된 상품 개수 계산 (한 번만 계산)
         final viewerUid = emailAuthProvider.user?.uid;
-        final products = AppConfig.useFirebase
-            ? getMockProducts()
-            : LocalAppRepository.instance
-                .getProducts(viewerUid: viewerUid)
-                .toList();
+
+        // Firebase 사용 시 StreamBuilder로 실시간 상품 개수 계산
+        if (AppConfig.useFirebase) {
+          return StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('products')
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const SizedBox.shrink();
+              }
+
+              final products = snapshot.data!.docs.map((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                return _firestoreDocToProduct(doc.id, data, viewerUid);
+              }).toList();
+
+              var filteredCount = products.length;
+              if (locationProvider.filterLatitude != null &&
+                  locationProvider.filterLongitude != null) {
+                filteredCount = products.where((product) {
+                  if (product.x == 0.0 && product.y == 0.0) {
+                    return false;
+                  }
+                  final distance = Geolocator.distanceBetween(
+                    locationProvider.filterLatitude!,
+                    locationProvider.filterLongitude!,
+                    product.x,
+                    product.y,
+                  );
+                  return distance <= locationProvider.searchRadius;
+                }).length;
+              }
+
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                color: Colors.teal.withOpacity(0.05),
+                child: Row(
+                  children: [
+                    Icon(
+                      locationProvider.isCurrentLocationSelected
+                          ? Icons.my_location
+                          : Icons.school,
+                      size: 16,
+                      color: Colors.teal,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '주변 상품 $filteredCount개',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.teal[700],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        }
+
+        // 로컬 모드
+        final products = LocalAppRepository.instance
+            .getProducts(viewerUid: viewerUid)
+            .toList();
         
         var filteredCount = products.length;
         if (locationProvider.filterLatitude != null &&
@@ -949,9 +1000,14 @@ class _HomePageState extends State<HomePage> {
   /// 카테고리 필터 바를 생성하는 위젯
   Widget _buildCategoryFilter() {
     return Container(
-      height: 50,
-      color: Colors.white,
+      height: 40,
       padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          bottom: BorderSide(color: Colors.grey[200]!, width: 1),
+        ),
+      ),
       child: ListView(
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(), // 스크롤 활성화
@@ -995,9 +1051,11 @@ class _HomePageState extends State<HomePage> {
         textColor = Colors.white;
       }
     } else {
-      backgroundColor = isSelected ? Colors.white : Colors.grey[800];
-      textColor = isSelected ? Colors.black87 : Colors.white;
+      backgroundColor = isSelected ? Colors.teal : Colors.grey[100];
+      textColor = isSelected ? Colors.white : Colors.black87;
       if (isSelected) {
+        borderStyle = Border.all(color: Colors.teal, width: 1.5);
+      } else {
         borderStyle = Border.all(color: Colors.grey[300]!, width: 1);
       }
     }
@@ -1264,7 +1322,7 @@ class _HomePageState extends State<HomePage> {
             // Map<String, dynamic> 형태의 상품 데이터
             final product = item as Map<String, dynamic>;
             final productModel = product['product'] as Product?;
-            return GestureDetector(
+            return InkWell(
               onTap: () {
                 if (productModel == null) return;
                 Navigator.push(
@@ -1275,13 +1333,23 @@ class _HomePageState extends State<HomePage> {
                   ),
                 );
               },
+              borderRadius: BorderRadius.circular(12),
+              splashColor: Colors.teal.withOpacity(0.1),
+              highlightColor: Colors.teal.withOpacity(0.05),
               child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey[200]!),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey[200]!, width: 1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.03),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
                 child: Row(
                   children: [

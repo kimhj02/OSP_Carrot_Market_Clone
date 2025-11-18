@@ -115,20 +115,64 @@ class _ProfilePageState extends State<ProfilePage>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: const Text(
-          '나의 금오',
-          style: TextStyle(
-            color: Colors.black,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
+      body: SafeArea(
+        child: Consumer2<KakaoLoginProvider, app_auth.EmailAuthProvider>(
+        builder: (context, kakaoProvider, emailProvider, child) {
+          final kakaoUser = kakaoProvider.user;
+          final emailUser = emailProvider.user;
+          final isLoggedIn = kakaoUser != null || emailUser != null;
+          final isKakaoLogin = kakaoUser != null;
+
+          return Column(
+            children: [
+              // 헤더 (제목 + 설정 버튼)
+              _buildHeader(context),
+              
+              // 프로필 정보 섹션
+              _buildProfileSection(
+                context,
+                kakaoUser,
+                emailUser,
+                isLoggedIn,
+                isKakaoLogin,
+                kakaoProvider,
+                emailProvider,
+              ),
+
+              // 상품 상태 탭
+              _buildTabBar(),
+
+              // 상품 목록
+              Expanded(
+                child: _buildProductList(),
+              ),
+            ],
+          );
+        },
         ),
-        actions: [
+      ),
+    );
+  }
+
+  /// 헤더 위젯 (제목 + 설정 버튼)
+  Widget _buildHeader(BuildContext context) {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          const Text(
+            '나의 금오',
+            style: TextStyle(
+              color: Colors.black87,
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const Spacer(),
           IconButton(
-            icon: const Icon(Icons.settings_outlined, color: Colors.black),
+            icon: const Icon(Icons.settings_outlined, color: Colors.black87, size: 28),
+            iconSize: 28,
             onPressed: () async {
               _settingsTapCount++;
               if (_settingsTapCount >= 10) {
@@ -162,37 +206,6 @@ class _ProfilePageState extends State<ProfilePage>
             },
           ),
         ],
-      ),
-      body: Consumer2<KakaoLoginProvider, app_auth.EmailAuthProvider>(
-        builder: (context, kakaoProvider, emailProvider, child) {
-          final kakaoUser = kakaoProvider.user;
-          final emailUser = emailProvider.user;
-          final isLoggedIn = kakaoUser != null || emailUser != null;
-          final isKakaoLogin = kakaoUser != null;
-
-          return Column(
-            children: [
-              // 프로필 정보 섹션
-              _buildProfileSection(
-                context,
-                kakaoUser,
-                emailUser,
-                isLoggedIn,
-                isKakaoLogin,
-                kakaoProvider,
-                emailProvider,
-              ),
-
-              // 상품 상태 탭
-              _buildTabBar(),
-
-          // 상품 목록
-          Expanded(
-            child: _buildProductList(),
-          ),
-            ],
-          );
-        },
       ),
     );
   }
