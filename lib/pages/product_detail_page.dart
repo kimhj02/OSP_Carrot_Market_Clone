@@ -120,12 +120,13 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       // 로컬 모드
       final listing = LocalAppRepository.instance.getListing(widget.product.id);
       if (listing != null) {
+        final updatedViewCount = listing.viewCount + 1;
         LocalAppRepository.instance.updateListing(
           listingId: widget.product.id,
-          viewCount: listing.viewCount + 1,
+          viewCount: updatedViewCount,
         );
         setState(() {
-          _viewCount = widget.product.viewCount + 1;
+          _viewCount = updatedViewCount;
         });
       }
     }
