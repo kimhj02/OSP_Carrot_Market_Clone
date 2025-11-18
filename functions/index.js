@@ -26,6 +26,15 @@ exports.sendChatNotification = functions.firestore
     // FCM 토큰이 없으면 알림 전송 불가
     if (!recipientFcmToken) {
       console.log('❌ FCM 토큰이 없습니다. 알림을 전송할 수 없습니다.');
+      
+      // 알림 요청 문서 삭제 (토큰이 없어도 처리 완료로 간주)
+      try {
+        await snap.ref.delete();
+        console.log('✅ 알림 요청 문서 삭제 성공 (토큰 없음)');
+      } catch (error) {
+        console.error('❌ 알림 요청 문서 삭제 실패 (토큰 없음):', error);
+      }
+      
       return null;
     }
 

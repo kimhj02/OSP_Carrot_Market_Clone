@@ -434,14 +434,16 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
     return Product(
       id: listing.id,
-      title: listing.title,
-      description: listing.description,
+      title: listing.title.isNotEmpty ? listing.title : '제목 없음',
+      description: listing.description.isNotEmpty ? listing.description : '설명 없음',
       price: listing.price,
       imageUrls: listing.images,
       category: listing.category,
       status: productStatus,
-      sellerId: listing.sellerUid,
-      sellerNickname: listing.sellerName,
+      sellerId: listing.sellerUid.isNotEmpty ? listing.sellerUid : 'unknown',
+      sellerNickname: listing.sellerName.isNotEmpty 
+          ? listing.sellerName 
+          : '판매자',
       sellerProfileImageUrl: listing.sellerPhotoUrl,
       location: locationString,
       createdAt: listing.createdAt,
