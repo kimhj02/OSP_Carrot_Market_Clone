@@ -150,7 +150,7 @@ class _ChatListPageState extends State<ChatListPage> {
           '채팅',
           style: TextStyle(
             color: Colors.black,
-            fontSize: 18,
+            fontSize: 24,
             fontWeight: FontWeight.bold,
           ),
         ),

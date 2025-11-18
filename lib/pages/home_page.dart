@@ -60,14 +60,14 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    // 로그아웃 상태를 감지하여 홈으로 자동 이동
+    /// 로그아웃 상태를 감지하여 홈으로 자동 이동
     return Consumer2<KakaoLoginProvider, EmailAuthProvider>(
       builder: (context, loginProvider, emailAuthProvider, child) {
-        // 로그인 상태 확인
+        /// 로그인 상태 확인
         final isLoggedIn =
             loginProvider.user != null || emailAuthProvider.user != null;
 
-        // 로그아웃 상태이고 다른 탭에 있으면 홈으로 이동
+        /// 로그아웃 상태이고 다른 탭에 있으면 홈으로 이동
         if (!isLoggedIn && IndexedStackState != 0) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             setState(() {
@@ -83,96 +83,68 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildScaffold(BuildContext context, bool isLoggedIn) {
     return Scaffold(
-      // 금오 마켓 스타일의 앱바
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Row(
-          children: [
-            // 금오 마켓 아이콘
-            Container(
-              width: 24,
-              height: 24,
-              decoration: const BoxDecoration(
-                color: Colors.teal,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.local_grocery_store,
-                color: Colors.white,
-                size: 16,
-              ),
-            ),
-            const SizedBox(width: 8),
-            // 위치 정보 (탭하면 지도로 이동)
-            GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const MapScreen()),
-                );
-              },
-              child: const Row(
+      /// 홈 화면(IndexedStackState == 0)에서만 AppBar 표시
+      appBar: IndexedStackState == 0
+          ? AppBar(
+              backgroundColor: Colors.white,
+              elevation: 0,
+              title: Row(
                 children: [
-                  Text(
-                    '강남구 역삼동',
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+                  // 금오 마켓 아이콘
+                  Container(
+                    width: 24,
+                    height: 24,
+                    decoration: const BoxDecoration(
+                      color: Colors.teal,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.local_grocery_store,
+                      color: Colors.white,
+                      size: 16,
                     ),
                   ),
-                  Icon(Icons.keyboard_arrow_down, color: Colors.black),
+                  const SizedBox(width: 8),
+                  // 위치 정보 (탭하면 지도로 이동)
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) => const MapScreen()),
+                      );
+                    },
+                    child: const Row(
+                      children: [
+                        Text(
+                          '강남구 역삼동',
+                          style: TextStyle(
+                            color: Colors.black,
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Icon(Icons.keyboard_arrow_down, color: Colors.black),
+                      ],
+                    ),
+                  ),
                 ],
               ),
-            ),
-          ],
-        ),
-        actions: [
-          // 검색 아이콘
-          IconButton(
-            icon: const Icon(Icons.search, color: Colors.black),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const SearchPage()),
-              );
-            },
-          ),
-          // 메뉴 아이콘
-          // IconButton(
-          //   icon: const Icon(Icons.menu, color: Colors.black),
-          //   onPressed: () {
-          //     // 메뉴 기능 (향후 구현)
-          //     //drawer state 바꾸기
-          //   },
-          // ),
-        ],
-      ),
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            const DrawerHeader(
-              decoration: BoxDecoration(color: Colors.teal),
-              child: Text(
-                "바로 마켓 메뉴",
-                style: TextStyle(color: Colors.white, fontSize: 20),
-              ),
-            ),
-            ListTile(
-              leading: Icon(Icons.home),
-              title: Text("컨텐츠 1"),
-              onTap: () {},
-            ),
-            ListTile(
-              leading: Icon(Icons.home),
-              title: Text("컨텐츠 2"),
-              onTap: () {},
-            ),
-          ],
-        ),
-      ),
+              actions: [
+                // 검색 아이콘
+                IconButton(
+                  icon: const Icon(Icons.search, color: Colors.black),
+                  iconSize: 28,
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const SearchPage()),
+                    );
+                  },
+                ),
+              ],
+            )
+          : null,
 
       // 메인 콘텐츠 영역
       body: IndexedStack(
@@ -490,7 +462,7 @@ class _HomePageState extends State<HomePage> {
   /// 카테고리 필터 바를 생성하는 위젯
   Widget _buildCategoryFilter() {
     return Container(
-      height: 50,
+      height: 40,
       color: Colors.white,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: ListView(
@@ -912,7 +884,7 @@ class _FabMenuItem extends StatelessWidget {
           borderRadius: BorderRadius.circular(18),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.25),
+              color: Colors.black,
               blurRadius: 12,
               offset: const Offset(0, 6),
             ),
@@ -924,7 +896,7 @@ class _FabMenuItem extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: iconColor.withOpacity(0.12),
+                color: iconColor,
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, color: iconColor, size: 22),

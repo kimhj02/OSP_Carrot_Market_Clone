@@ -104,7 +104,7 @@ class _ProfilePageState extends State<ProfilePage>
           '나의 금오',
           style: TextStyle(
             color: Colors.black,
-            fontSize: 18,
+            fontSize: 24,
             fontWeight: FontWeight.bold,
           ),
         ),
