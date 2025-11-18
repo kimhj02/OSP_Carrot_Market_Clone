@@ -23,20 +23,84 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
 
     if (AppConfig.useFirebase) {
       _timer = Timer.periodic(const Duration(seconds: 5), (timer) async {
-        if (!AppConfig.useFirebase) {
-          timer.cancel();
-          return;
-        }
+        try {
+          if (!AppConfig.useFirebase) {
+            timer.cancel();
+            return;
+          }
 
-        final currentUser = FirebaseAuth.instance.currentUser;
-        if (currentUser == null) {
+          final currentUser = FirebaseAuth.instance.currentUser;
+          if (currentUser == null) {
+            timer.cancel();
+            return;
+          }
+          
+          await currentUser.reload();
+          
+          if (FirebaseAuth.instance.currentUser?.emailVerified == true) {
+            timer.cancel();
+            debugPrint('✅ 이메일 인증 확인됨. AuthCheck가 화면을 전환합니다.');
+          }
+        } on FirebaseAuthException catch (e) {
+          // Firebase 인증 관련 예외 처리
+          debugPrint('❌ Firebase 인증 오류: ${e.code} - ${e.message}');
+          
+          // 특정 에러 코드에 대해 타이머 취소 및 정리
+          switch (e.code) {
+            case 'user-disabled':
+              debugPrint('⚠️ 사용자 계정이 비활성화되었습니다.');
+              timer.cancel();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('계정이 비활성화되었습니다.'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+              break;
+            case 'user-not-found':
+              debugPrint('⚠️ 사용자를 찾을 수 없습니다.');
+              timer.cancel();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('사용자를 찾을 수 없습니다.'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+              break;
+            case 'user-token-expired':
+              debugPrint('⚠️ 사용자 토큰이 만료되었습니다.');
+              timer.cancel();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('세션이 만료되었습니다. 다시 로그인해주세요.'),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+              }
+              break;
+            default:
+              // 다른 FirebaseAuthException은 로그만 남기고 계속 진행
+              debugPrint('⚠️ 알 수 없는 Firebase 인증 오류: ${e.code}');
+              break;
+          }
+        } catch (e) {
+          // 기타 예외 처리
+          debugPrint('❌ 예상치 못한 오류 발생: $e');
           timer.cancel();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('오류가 발생했습니다: ${e.toString()}'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
           return;
-        }
-        await currentUser.reload();
-        if (FirebaseAuth.instance.currentUser?.emailVerified == true) {
-          timer.cancel();
-          debugPrint('✅ 이메일 인증 확인됨. AuthCheck가 화면을 전환합니다.');
         }
       });
     }
