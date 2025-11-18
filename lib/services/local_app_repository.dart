@@ -288,6 +288,7 @@ class LocalAppRepository {
     String? description,
     ListingStatus? status,
     GroupBuyInfo? groupBuy,
+    int? viewCount,
   }) async {
     final listing = _listings[listingId];
     if (listing == null) {
@@ -303,6 +304,7 @@ class LocalAppRepository {
       description: description ?? listing.description,
       status: status ?? listing.status,
       groupBuy: groupBuy ?? listing.groupBuy,
+      viewCount: viewCount ?? listing.viewCount,
       updatedAt: DateTime.now(),
     );
 

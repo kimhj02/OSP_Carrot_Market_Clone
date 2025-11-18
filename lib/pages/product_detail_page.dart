@@ -67,9 +67,12 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
 
   int _currentImageIndex = 0;   /// 현재 이미지 인덱스 (여러 이미지인 경우)
   bool _isLiked = false;      /// 찜하기 상태
+  int _likeCount = 0;         /// 찜 수 (실시간 업데이트용)
+  int _viewCount = 0;         /// 조회수 (실시간 업데이트용)
   bool _isSending = false;  /// 메시지 전송 상태
   bool _hasText = false;  /// 입력창의 텍스트 여부
   bool _isDeleting = false; /// 상품 삭제 진행 상태
+  bool _hasIncrementedViewCount = false; /// 조회수 증가 여부
 
   @override
   void initState() {
@@ -79,6 +82,11 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     _messageController.text = _defaultMessage;
     _hasText = true;
     _isLiked = widget.product.isLiked;
+    _likeCount = widget.product.likeCount;
+    _viewCount = widget.product.viewCount;
+
+    /// 조회수 증가
+    _incrementViewCount();
 
     /// 입력창 상태 관리
     _messageController.addListener(() {
@@ -86,6 +94,41 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         _hasText = _messageController.text.trim().isNotEmpty;
       });
     });
+  }
+
+  /// 조회수를 증가시키는 메서드
+  Future<void> _incrementViewCount() async {
+    if (_hasIncrementedViewCount) return; // 이미 증가시켰으면 중복 방지
+    _hasIncrementedViewCount = true;
+
+    if (AppConfig.useFirebase) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('products')
+            .doc(widget.product.id)
+            .update({
+          'viewCount': FieldValue.increment(1),
+        });
+        // 로컬 상태도 업데이트
+        setState(() {
+          _viewCount = widget.product.viewCount + 1;
+        });
+      } catch (e) {
+        debugPrint('조회수 증가 오류: $e');
+      }
+    } else {
+      // 로컬 모드
+      final listing = LocalAppRepository.instance.getListing(widget.product.id);
+      if (listing != null) {
+        LocalAppRepository.instance.updateListing(
+          listingId: widget.product.id,
+          viewCount: listing.viewCount + 1,
+        );
+        setState(() {
+          _viewCount = widget.product.viewCount + 1;
+        });
+      }
+    }
   }
 
   @override
@@ -276,7 +319,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                       Icon(Icons.visibility, size: 16, color: Colors.grey[600]),
                       const SizedBox(width: 4),
                       Text(
-                        '조회 ${widget.product.viewCount}',
+                        '조회 $_viewCount',
                         style: TextStyle(
                           fontSize: 14,
                           color: Colors.grey[600],
@@ -286,7 +329,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                       Icon(Icons.favorite, size: 16, color: Colors.grey[600]),
                       const SizedBox(width: 4),
                       Text(
-                        '찜 ${widget.product.likeCount}',
+                        '찜 $_likeCount',
                         style: TextStyle(
                           fontSize: 14,
                           color: Colors.grey[600],
@@ -958,16 +1001,95 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     }
   }
 
-  void _toggleLike() {
+  Future<void> _toggleLike() async {
     final authProvider = context.read<EmailAuthProvider>();
     final uid = authProvider.user?.uid;
-    if (!AppConfig.useFirebase && uid != null) {
-      LocalAppRepository.instance.toggleFavorite(widget.product.id, uid);
+    
+    if (uid == null) {
+      _showSnackBar('로그인이 필요합니다');
+      return;
     }
+
+    // UI 즉시 업데이트 (낙관적 업데이트)
+    final wasLiked = _isLiked;
+    final newLikeCount = wasLiked ? _likeCount - 1 : _likeCount + 1;
+    
     setState(() {
-      _isLiked = !_isLiked;
+      _isLiked = !wasLiked;
+      _likeCount = newLikeCount;
     });
-    _showSnackBar(_isLiked ? '찜 목록에 추가했습니다' : '찜을 취소했습니다');
+
+    if (AppConfig.useFirebase) {
+      // Firebase 모드: Firestore에 업데이트
+      try {
+        final productRef = FirebaseFirestore.instance
+            .collection('products')
+            .doc(widget.product.id);
+        
+        final productDoc = await productRef.get();
+        if (!productDoc.exists) {
+          // 실패 시 롤백
+          setState(() {
+            _isLiked = wasLiked;
+            _likeCount = widget.product.likeCount;
+          });
+          _showSnackBar('상품을 찾을 수 없습니다');
+          return;
+        }
+        
+        final data = productDoc.data()!;
+        final likedUserIds = List<String>.from(data['likedUserIds'] ?? []);
+        final isCurrentlyLiked = likedUserIds.contains(uid);
+        
+        if (isCurrentlyLiked) {
+          // 찜 취소
+          likedUserIds.remove(uid);
+        } else {
+          // 찜 추가
+          likedUserIds.add(uid);
+        }
+        
+        await productRef.update({
+          'likedUserIds': likedUserIds,
+          'likeCount': likedUserIds.length,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        
+        // Firestore 업데이트 후 실제 값으로 동기화
+        setState(() {
+          _likeCount = likedUserIds.length;
+        });
+        
+        _showSnackBar(_isLiked ? '찜 목록에 추가했습니다' : '찜을 취소했습니다');
+      } catch (e) {
+        debugPrint('찜 기능 오류: $e');
+        // 실패 시 롤백
+        setState(() {
+          _isLiked = wasLiked;
+          _likeCount = widget.product.likeCount;
+        });
+        _showSnackBar('오류가 발생했습니다');
+      }
+    } else {
+      // 로컬 모드
+      try {
+        LocalAppRepository.instance.toggleFavorite(widget.product.id, uid);
+        final listing = LocalAppRepository.instance.getListing(widget.product.id);
+        if (listing != null) {
+          setState(() {
+            _likeCount = listing.likeCount;
+          });
+        }
+        _showSnackBar(_isLiked ? '찜 목록에 추가했습니다' : '찜을 취소했습니다');
+      } catch (e) {
+        // 실패 시 롤백
+        setState(() {
+          _isLiked = wasLiked;
+          _likeCount = widget.product.likeCount;
+        });
+        _showSnackBar('오류가 발생했습니다');
+      }
+    }
   }
 
   bool get _canDeleteProduct {

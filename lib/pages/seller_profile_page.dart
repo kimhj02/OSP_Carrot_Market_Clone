@@ -12,9 +12,9 @@
 /// @since 2024-01-01
 
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_sandbox/models/product.dart';
 import 'package:flutter_sandbox/pages/product_detail_page.dart';
-import 'package:flutter_sandbox/data/mock_products.dart';
 import 'package:flutter_sandbox/config/app_config.dart';
 import 'package:flutter_sandbox/services/local_app_repository.dart';
 
@@ -45,14 +45,10 @@ class _SellerProfilePageState extends State<SellerProfilePage>
   /// 상품 상태 탭 컨트롤러
   late TabController _tabController;
 
-  /// 판매자가 등록한 상품 목록
-  List<Product> _sellerProducts = [];
-
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _loadSellerProducts();
   }
 
   @override
@@ -61,34 +57,46 @@ class _SellerProfilePageState extends State<SellerProfilePage>
     super.dispose();
   }
 
-  /// 판매자가 등록한 상품 목록을 로드하는 메서드
-  void _loadSellerProducts() {
-    // 실제로는 sellerId로 필터링하여 가져옵니다
-    final products = AppConfig.useFirebase
-        ? getMockProducts()
-        : LocalAppRepository.instance
-            .getProducts(viewerUid: null)
-            .where((p) => p.sellerId == widget.sellerId)
-            .toList();
+  /// Firestore Document를 Product로 변환하는 헬퍼 메서드
+  Product _firestoreDocToProduct(String docId, Map<String, dynamic> data, String? viewerUid) {
+    final location = data['location'] as GeoPoint?;
+    final region = data['region'] as Map<String, dynamic>?;
+    final createdAt = data['createdAt'] as Timestamp?;
+    final updatedAt = data['updatedAt'] as Timestamp?;
+    final likedUserIds = List<String>.from(data['likedUserIds'] ?? []);
     
-    _sellerProducts = AppConfig.useFirebase
-        ? getMockProducts().where((p) => p.sellerId == widget.sellerId).toList()
-        : products;
-    
-    setState(() {});
+    return Product(
+      id: docId,
+      title: data['title'] as String? ?? '',
+      description: data['description'] as String? ?? '',
+      price: (data['price'] as int?) ?? 0,
+      imageUrls: List<String>.from(data['images'] ?? []),
+      category: ProductCategory.values[data['category'] as int? ?? 0],
+      status: ProductStatus.values[data['status'] as int? ?? 0],
+      sellerId: data['sellerUid'] as String? ?? '',
+      sellerNickname: data['sellerName'] as String? ?? '',
+      sellerProfileImageUrl: data['sellerPhotoUrl'] as String?,
+      location: region?['name'] as String? ?? '알 수 없는 지역',
+      createdAt: createdAt?.toDate() ?? DateTime.now(),
+      updatedAt: updatedAt?.toDate() ?? DateTime.now(),
+      viewCount: data['viewCount'] as int? ?? 0,
+      likeCount: data['likeCount'] as int? ?? 0,
+      isLiked: viewerUid != null && likedUserIds.contains(viewerUid),
+      x: location?.latitude ?? 0.0,
+      y: location?.longitude ?? 0.0,
+    );
   }
 
-  /// 현재 선택된 탭에 해당하는 상품 목록을 반환하는 메서드
-  List<Product> get _filteredProducts {
-    final selectedIndex = _tabController.index;
-    switch (selectedIndex) {
+  /// 상품 목록을 필터링하는 메서드
+  List<Product> _filterProducts(List<Product> products, int tabIndex) {
+    switch (tabIndex) {
       case 0: // 판매중
-        return _sellerProducts
+        return products
             .where((p) => p.status == ProductStatus.onSale || 
                          p.status == ProductStatus.reserved)
             .toList();
       case 1: // 판매완료
-        return _sellerProducts
+        return products
             .where((p) => p.status == ProductStatus.sold)
             .toList();
       default:
@@ -126,9 +134,7 @@ class _SellerProfilePageState extends State<SellerProfilePage>
 
           // 상품 목록
           Expanded(
-            child: _filteredProducts.isEmpty
-                ? _buildEmptyState()
-                : _buildProductGrid(),
+            child: _buildProductList(),
           ),
         ],
       ),
@@ -137,6 +143,32 @@ class _SellerProfilePageState extends State<SellerProfilePage>
 
   /// 판매자 정보 섹션을 생성하는 위젯
   Widget _buildSellerSection() {
+    if (AppConfig.useFirebase) {
+      return StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('products')
+            .where('sellerUid', isEqualTo: widget.sellerId)
+            .snapshots(),
+        builder: (context, snapshot) {
+          final products = snapshot.data?.docs.map((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            return _firestoreDocToProduct(doc.id, data, null);
+          }).toList() ?? [];
+          
+          return _buildSellerInfo(products);
+        },
+      );
+    } else {
+      final products = LocalAppRepository.instance
+          .getProducts(viewerUid: null)
+          .where((p) => p.sellerId == widget.sellerId)
+          .toList();
+      return _buildSellerInfo(products);
+    }
+  }
+
+  /// 판매자 정보를 표시하는 위젯
+  Widget _buildSellerInfo(List<Product> products) {
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.all(20),
@@ -165,12 +197,12 @@ class _SellerProfilePageState extends State<SellerProfilePage>
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _buildStatItem('판매중', _sellerProducts
+              _buildStatItem('판매중', products
                   .where((p) => p.status == ProductStatus.onSale || 
                                p.status == ProductStatus.reserved)
                   .length),
               const SizedBox(width: 24),
-              _buildStatItem('판매완료', _sellerProducts
+              _buildStatItem('판매완료', products
                   .where((p) => p.status == ProductStatus.sold)
                   .length),
             ],
@@ -224,8 +256,59 @@ class _SellerProfilePageState extends State<SellerProfilePage>
     );
   }
 
+  /// 상품 목록을 빌드하는 위젯
+  Widget _buildProductList() {
+    if (AppConfig.useFirebase) {
+      return StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('products')
+            .where('sellerUid', isEqualTo: widget.sellerId)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          
+          if (snapshot.hasError) {
+            return Center(child: Text('오류: ${snapshot.error}'));
+          }
+          
+          final allProducts = snapshot.data?.docs.map((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            return _firestoreDocToProduct(doc.id, data, null);
+          }).toList() ?? [];
+          
+          // 최신순으로 정렬 (클라이언트 측)
+          allProducts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          
+          final filtered = _filterProducts(allProducts, _tabController.index);
+          
+          if (filtered.isEmpty) {
+            return _buildEmptyState();
+          }
+          
+          return _buildProductGrid(filtered);
+        },
+      );
+    } else {
+      // 로컬 모드
+      final products = LocalAppRepository.instance
+          .getProducts(viewerUid: null)
+          .where((p) => p.sellerId == widget.sellerId)
+          .toList();
+      
+      final filtered = _filterProducts(products, _tabController.index);
+      
+      if (filtered.isEmpty) {
+        return _buildEmptyState();
+      }
+      
+      return _buildProductGrid(filtered);
+    }
+  }
+
   /// 상품 그리드를 생성하는 위젯
-  Widget _buildProductGrid() {
+  Widget _buildProductGrid(List<Product> products) {
     return GridView.builder(
       padding: const EdgeInsets.all(16),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -234,9 +317,9 @@ class _SellerProfilePageState extends State<SellerProfilePage>
         mainAxisSpacing: 16,
         childAspectRatio: 0.75,
       ),
-      itemCount: _filteredProducts.length,
+      itemCount: products.length,
       itemBuilder: (context, index) {
-        final product = _filteredProducts[index];
+        final product = products[index];
         return _buildProductCard(product);
       },
     );
