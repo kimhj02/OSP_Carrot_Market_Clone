@@ -90,21 +90,21 @@ class _ProfilePageState extends State<ProfilePage>
   }
 
   /// 현재 선택된 탭에 해당하는 상품 목록을 필터링
-  List<Product> _filterProducts(List<Product> products, int tabIndex) {
+  List<Product> _filterProducts(List<Product> products, int tabIndex, String? currentUserId) {
     switch (tabIndex) {
-      case 0: // 판매중
+      case 0: // 판매중 - 내가 판매중인 상품만
         return products
-            .where((p) => p.status == ProductStatus.onSale)
+            .where((p) => p.status == ProductStatus.onSale && p.sellerId == currentUserId)
             .toList();
-      case 1: // 예약중
+      case 1: // 예약중 - 내가 예약중인 상품만
         return products
-            .where((p) => p.status == ProductStatus.reserved)
+            .where((p) => p.status == ProductStatus.reserved && p.sellerId == currentUserId)
             .toList();
-      case 2: // 판매완료
+      case 2: // 판매완료 - 내가 판매완료한 상품만
         return products
-            .where((p) => p.status == ProductStatus.sold)
+            .where((p) => p.status == ProductStatus.sold && p.sellerId == currentUserId)
             .toList();
-      case 3: // 찜한 상품
+      case 3: // 찜한 상품 - 찜한 상품만 (내 상품이 아닌 것도 포함)
         return products.where((p) => p.isLiked).toList();
       default:
         return [];
@@ -365,13 +365,14 @@ class _ProfilePageState extends State<ProfilePage>
               // 최신순으로 정렬 (클라이언트 측)
               likedProducts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
               
-              // 모든 상품 합치기 (내 상품 + 찜한 상품)
-              final allProductsWithLiked = [
-                ...allProducts,
-                ...likedProducts.where((p) => !allProducts.any((myP) => myP.id == p.id)),
-              ];
+              // 탭에 따라 다른 상품 목록 사용
+              // 판매중/예약중/판매완료 탭: 내 상품만
+              // 찜한 상품 탭: 찜한 상품만
+              final productsToShow = _tabController.index == 3
+                  ? likedProducts
+                  : allProducts;
               
-              final filtered = _filterProducts(allProductsWithLiked, _tabController.index);
+              final filtered = _filterProducts(productsToShow, _tabController.index, currentUser.uid);
               
               if (filtered.isEmpty) {
                 return _buildEmptyState();
@@ -384,12 +385,22 @@ class _ProfilePageState extends State<ProfilePage>
       );
     } else {
       // 로컬 모드
-      final products = LocalAppRepository.instance
+      final allProducts = LocalAppRepository.instance
           .getProducts(viewerUid: currentUser.uid)
-          .where((p) => p.sellerId == currentUser.uid || p.isLiked)
+          .where((p) => p.sellerId == currentUser.uid)
           .toList();
       
-      final filtered = _filterProducts(products, _tabController.index);
+      final likedProducts = LocalAppRepository.instance
+          .getProducts(viewerUid: currentUser.uid)
+          .where((p) => p.isLiked)
+          .toList();
+      
+      // 탭에 따라 다른 상품 목록 사용
+      final productsToShow = _tabController.index == 3
+          ? likedProducts
+          : allProducts;
+      
+      final filtered = _filterProducts(productsToShow, _tabController.index, currentUser.uid);
       
       if (filtered.isEmpty) {
         return _buildEmptyState();

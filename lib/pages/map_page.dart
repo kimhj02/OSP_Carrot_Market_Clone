@@ -24,7 +24,7 @@ class MapScreen extends StatefulWidget {
   State<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends State<MapScreen> {
+class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   GoogleMapController? _mapController;
   LatLng? _currentPosition;
   final LocalAppRepository _repository = LocalAppRepository.instance;
@@ -33,13 +33,54 @@ class _MapScreenState extends State<MapScreen> {
   final Map<String, BitmapDescriptor> _markerCache = {};
 
   final LatLng kumoh = const LatLng(36.1461, 128.3939); //금오공대 위치
-  static const double _searchRadiusMeters = 1000;
+  static const double _searchRadiusMeters = 5000; // 기본 검색 반경을 5km로 증가
 
   @override
   void initState() {
     super.initState();
     // 초기 위치 설정 (지도 표시를 위해 필요)
     _currentPosition = kumoh;
+    // 앱 생명주기 관찰자 추가 (페이지로 돌아올 때 새로고침)
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  DateTime? _lastRefreshTime;
+  
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 페이지가 다시 표시될 때 상품 새로고침 (상품 등록 후 돌아올 때)
+    // 마커가 없거나, 마지막 새로고침 후 2초 이상 지났으면 새로고침
+    final now = DateTime.now();
+    final shouldRefresh = _mapController != null && 
+                         _currentPosition != null && 
+                         (_pins.isEmpty || 
+                          _lastRefreshTime == null || 
+                          now.difference(_lastRefreshTime!).inSeconds > 2);
+    
+    if (shouldRefresh) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final locationProvider = context.read<LocationProvider>();
+        _refreshListings(_currentPosition!, locationProvider);
+        _lastRefreshTime = DateTime.now();
+      });
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // 앱이 포그라운드로 돌아올 때 상품 새로고침
+    if (state == AppLifecycleState.resumed && _mapController != null && _currentPosition != null) {
+      final locationProvider = context.read<LocationProvider>();
+      _refreshListings(_currentPosition!, locationProvider);
+    }
   }
 
   void _onMapCreated(GoogleMapController controller) {
@@ -50,24 +91,29 @@ class _MapScreenState extends State<MapScreen> {
     } else {
       // LocationProvider의 필터 설정에 따라 지도 업데이트
       final locationProvider = context.read<LocationProvider>();
+      LatLng center;
       if (locationProvider.isLocationFilterEnabled &&
           locationProvider.filterLatitude != null &&
           locationProvider.filterLongitude != null) {
-        final filterCenter = LatLng(
+        center = LatLng(
           locationProvider.filterLatitude!,
           locationProvider.filterLongitude!,
         );
-        _currentPosition = filterCenter;
+        _currentPosition = center;
         _mapController?.animateCamera(
           CameraUpdate.newCameraPosition(
             CameraPosition(
-              target: filterCenter,
+              target: center,
               zoom: 17,
             ),
           ),
         );
-        _refreshListings(filterCenter, locationProvider);
+      } else {
+        // 필터가 없으면 기본 위치(금오공대) 사용
+        center = kumoh;
       }
+      // 항상 상품 로드
+      _refreshListings(center, locationProvider);
     }
   }
 
@@ -166,64 +212,114 @@ class _MapScreenState extends State<MapScreen> {
         ? locationProvider.searchRadius
         : _searchRadiusMeters;
     
+    debugPrint('🗺️ 지도 상품 로드 시작: 중심(${center.latitude}, ${center.longitude}), 반경: ${searchRadius}m');
+    
     if (AppConfig.useFirebase) {
-      // Firebase 모드: Firestore에서 상품 가져오기
+      // Firebase 모드: Firestore에서 상품 가져오기 (실시간 업데이트)
       try {
         final snapshot = await FirebaseFirestore.instance
             .collection('products')
-            .get();
+            .snapshots()
+            .first; // 첫 번째 스냅샷만 가져오기 (실시간 업데이트는 build에서 처리)
+        
+        debugPrint('📦 Firestore에서 ${snapshot.docs.length}개 상품 조회됨');
         
         for (final doc in snapshot.docs) {
-          final data = doc.data();
-          final location = data['location'] as GeoPoint?;
-          final meetLocations = data['meetLocations'] as List?;
+          try {
+            final data = doc.data();
+            final location = data['location'] as GeoPoint?;
+            final meetLocations = data['meetLocations'] as List?;
+            
+            if (location == null) {
+              debugPrint('⚠️ 상품 ${doc.id}: location이 null입니다.');
+              continue;
+            }
+            
+            // Listing 객체로 변환
+          // 안전한 타입 변환 헬퍼 함수
+          int? _safeInt(dynamic value) {
+            if (value == null) return null;
+            if (value is int) return value;
+            if (value is String) return int.tryParse(value);
+            return null;
+          }
           
-          if (location == null) continue;
+          String? _safeString(dynamic value) {
+            if (value == null) return null;
+            if (value is String) return value;
+            return value.toString();
+          }
           
-          // Listing 객체로 변환
+          Map<String, dynamic>? _safeMap(dynamic value) {
+            if (value == null) return null;
+            if (value is Map) return Map<String, dynamic>.from(value);
+            return null;
+          }
+          
+          final categoryValue = _safeInt(data['category']) ?? 0;
+          final statusValue = _safeInt(data['status']) ?? 0;
+          final priceValue = _safeInt(data['price']) ?? 0;
+          final likeCountValue = _safeInt(data['likeCount']) ?? 0;
+          final viewCountValue = _safeInt(data['viewCount']) ?? 0;
+          
+          final regionMap = _safeMap(data['region']);
+          final groupBuyMap = _safeMap(data['groupBuy']);
+          
           final listing = Listing(
             id: doc.id,
             type: data['type'] == 'market' ? ListingType.market : ListingType.groupBuy,
-            title: data['title'] as String? ?? '',
-            price: (data['price'] as int?) ?? 0,
+            title: _safeString(data['title']) ?? '',
+            price: priceValue,
             location: AppGeoPoint(
               latitude: location.latitude,
               longitude: location.longitude,
             ),
             meetLocations: meetLocations?.map((loc) {
-              final geoPoint = loc as GeoPoint;
-              return AppGeoPoint(
-                latitude: geoPoint.latitude,
-                longitude: geoPoint.longitude,
-              );
-            }).toList() ?? [],
-            images: List<String>.from(data['images'] ?? []),
-            category: ProductCategory.values[data['category'] as int? ?? 0],
-            status: ListingStatus.values[data['status'] as int? ?? 0],
+              if (loc is GeoPoint) {
+                return AppGeoPoint(
+                  latitude: loc.latitude,
+                  longitude: loc.longitude,
+                );
+              }
+              return null;
+            }).whereType<AppGeoPoint>().toList() ?? [],
+            images: data['images'] is List 
+                ? (data['images'] as List).map((e) => _safeString(e) ?? '').where((e) => e.isNotEmpty).cast<String>().toList()
+                : [],
+            category: ProductCategory.values[categoryValue.clamp(0, ProductCategory.values.length - 1)],
+            status: ListingStatus.values[statusValue.clamp(0, ListingStatus.values.length - 1)],
             region: Region(
-              code: (data['region'] as Map?)?['code'] as String? ?? '',
-              name: (data['region'] as Map?)?['name'] as String? ?? '',
-              level: ((data['region'] as Map?)?['level'] as int?)?.toString() ?? 
-                     (data['region'] as Map?)?['level'] as String? ?? '0',
-              parent: (data['region'] as Map?)?['parent'] as String?,
+              code: _safeString(regionMap?['code']) ?? '',
+              name: _safeString(regionMap?['name']) ?? '',
+              level: _safeString(regionMap?['level']) ?? 
+                     _safeInt(regionMap?['level'])?.toString() ?? '0',
+              parent: _safeString(regionMap?['parent']),
             ),
-            universityId: data['universityId'] as String? ?? '',
-            sellerUid: data['sellerUid'] as String? ?? '',
-            sellerName: data['sellerName'] as String? ?? '',
-            sellerPhotoUrl: data['sellerPhotoUrl'] as String?,
-            likeCount: data['likeCount'] as int? ?? 0,
-            viewCount: data['viewCount'] as int? ?? 0,
-            description: data['description'] as String? ?? '',
-            createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-            updatedAt: (data['updatedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-            likedUserIds: Set<String>.from(data['likedUserIds'] ?? []),
-            groupBuy: data['groupBuy'] != null ? GroupBuyInfo(
-              itemSummary: (data['groupBuy'] as Map)['itemSummary'] as String? ?? '',
-              maxMembers: (data['groupBuy'] as Map)['maxMembers'] as int? ?? 0,
-              currentMembers: (data['groupBuy'] as Map)['currentMembers'] as int? ?? 1,
-              pricePerPerson: (data['groupBuy'] as Map)['pricePerPerson'] as int? ?? 0,
-              orderDeadline: ((data['groupBuy'] as Map)['orderDeadline'] as Timestamp?)?.toDate() ?? DateTime.now(),
-              meetPlaceText: (data['groupBuy'] as Map)['meetPlaceText'] as String? ?? '',
+            universityId: _safeString(data['universityId']) ?? '',
+            sellerUid: _safeString(data['sellerUid']) ?? '',
+            sellerName: _safeString(data['sellerName']) ?? '',
+            sellerPhotoUrl: _safeString(data['sellerPhotoUrl']),
+            likeCount: likeCountValue,
+            viewCount: viewCountValue,
+            description: _safeString(data['description']) ?? '',
+            createdAt: data['createdAt'] is Timestamp 
+                ? (data['createdAt'] as Timestamp).toDate() 
+                : DateTime.now(),
+            updatedAt: data['updatedAt'] is Timestamp 
+                ? (data['updatedAt'] as Timestamp).toDate() 
+                : DateTime.now(),
+            likedUserIds: data['likedUserIds'] is List
+                ? Set<String>.from((data['likedUserIds'] as List).map((e) => _safeString(e) ?? '').where((e) => e.isNotEmpty).cast<String>())
+                : <String>{},
+            groupBuy: groupBuyMap != null ? GroupBuyInfo(
+              itemSummary: _safeString(groupBuyMap['itemSummary']) ?? '',
+              maxMembers: _safeInt(groupBuyMap['maxMembers']) ?? 0,
+              currentMembers: _safeInt(groupBuyMap['currentMembers']) ?? 1,
+              pricePerPerson: _safeInt(groupBuyMap['pricePerPerson']) ?? 0,
+              orderDeadline: groupBuyMap['orderDeadline'] is Timestamp
+                  ? (groupBuyMap['orderDeadline'] as Timestamp).toDate()
+                  : DateTime.now(),
+              meetPlaceText: _safeString(groupBuyMap['meetPlaceText']) ?? '',
             ) : null,
           );
           
@@ -247,15 +343,28 @@ class _MapScreenState extends State<MapScreen> {
                   markerId: '${listing.id}_$i',
                 ),
               );
+              debugPrint('📍 마커 추가: ${listing.title} (거리: ${distance.toStringAsFixed(0)}m)');
+            } else {
+              debugPrint('❌ 거리 초과로 제외: ${listing.title} (거리: ${distance.toStringAsFixed(0)}m > ${searchRadius}m)');
             }
           }
+          } catch (e, stackTrace) {
+            debugPrint('❌ 상품 ${doc.id} 처리 실패: $e');
+            debugPrint('❌ 스택 트레이스: $stackTrace');
+            // 개별 상품 오류는 무시하고 계속 진행
+            continue;
+          }
         }
+        
+        debugPrint('✅ 총 ${pins.length}개 마커 생성됨');
       } catch (e) {
-        debugPrint('지도 상품 로드 실패: $e');
+        debugPrint('❌ 지도 상품 로드 실패: $e');
+        debugPrint('❌ 스택 트레이스: ${StackTrace.current}');
       }
     } else {
       // 로컬 모드
       final listings = _repository.getAllListings();
+      debugPrint('📦 로컬 모드: ${listings.length}개 상품 조회됨');
       
       for (final listing in listings) {
         final points =
@@ -276,17 +385,25 @@ class _MapScreenState extends State<MapScreen> {
                 markerId: '${listing.id}_$i',
               ),
             );
+            debugPrint('📍 마커 추가: ${listing.title} (거리: ${distance.toStringAsFixed(0)}m)');
+          } else {
+            debugPrint('❌ 거리 초과로 제외: ${listing.title} (거리: ${distance.toStringAsFixed(0)}m > ${searchRadius}m)');
           }
         }
       }
+      
+      debugPrint('✅ 총 ${pins.length}개 마커 생성됨');
     }
     
+    debugPrint('🔄 마커 업데이트: ${pins.length}개');
     setState(() {
       _pins
         ..clear()
         ..addAll(pins);
+      _lastRefreshTime = DateTime.now();
     });
     await _preloadMarkerIcons();
+    debugPrint('✅ 마커 아이콘 로드 완료');
   }
 
   Future<void> _preloadMarkerIcons() async {
@@ -319,6 +436,7 @@ class _MapScreenState extends State<MapScreen> {
       ));
     }
 
+    debugPrint('🗺️ 마커 빌드: _pins 개수 = ${_pins.length}');
     for (final pin in _pins) {
       final position = LatLng(pin.point.latitude, pin.point.longitude);
       markers.add(Marker(
@@ -338,6 +456,7 @@ class _MapScreenState extends State<MapScreen> {
       ));
     }
 
+    debugPrint('🗺️ 총 ${markers.length}개 마커 생성됨 (내 위치 포함)');
     return markers;
   }
 
@@ -346,15 +465,15 @@ class _MapScreenState extends State<MapScreen> {
     return Consumer<LocationProvider>(
       builder: (context, locationProvider, child) {
         // LocationProvider가 변경될 때마다 지도 업데이트
-        if (locationProvider.isLocationFilterEnabled &&
-            locationProvider.filterLatitude != null &&
-            locationProvider.filterLongitude != null) {
-          final filterCenter = LatLng(
-            locationProvider.filterLatitude!,
-            locationProvider.filterLongitude!,
-          );
-          if (_currentPosition != filterCenter) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (locationProvider.isLocationFilterEnabled &&
+              locationProvider.filterLatitude != null &&
+              locationProvider.filterLongitude != null) {
+            final filterCenter = LatLng(
+              locationProvider.filterLatitude!,
+              locationProvider.filterLongitude!,
+            );
+            if (_currentPosition != filterCenter) {
               _currentPosition = filterCenter;
               _mapController?.animateCamera(
                 CameraUpdate.newCameraPosition(
@@ -365,13 +484,13 @@ class _MapScreenState extends State<MapScreen> {
                 ),
               );
               _refreshListings(filterCenter, locationProvider);
-            });
+            }
+          } else if (_pins.isEmpty && _mapController != null) {
+            // 마커가 없고 지도가 생성되었으면 초기 로드
+            final center = _currentPosition ?? kumoh;
+            _refreshListings(center, locationProvider);
           }
-        } else if (!widget.moveToCurrentLocationOnInit && _currentPosition == kumoh) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _refreshListings(kumoh, locationProvider);
-          });
-        }
+        });
         
         return Scaffold(
           appBar: AppBar(title: const Text('내 주변 보기')),
@@ -558,27 +677,27 @@ class CustomMarkerHelper {
     final bytes = await _loadImageBytes(imageUrl);
     final ui.Codec codec = await ui.instantiateImageCodec(
       bytes.buffer.asUint8List(),
-      targetWidth: 150,
-      targetHeight: 150,
+      targetWidth: 200,  // 240 -> 200 (약간 축소)
+      targetHeight: 200, // 240 -> 200 (약간 축소)
     );
     final ui.FrameInfo frame = await codec.getNextFrame();
     final ui.Image image = frame.image;
 
-    const double width = 180;
-    const double height = 210;
+    const double width = 230;  // 280 -> 230 (약간 축소)
+    const double height = 270; // 330 -> 270 (약간 축소)
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
 
     final background = Paint()..color = Colors.white;
     final rrect = RRect.fromRectAndRadius(
       Rect.fromLTWH(0, 0, width, height),
-      const Radius.circular(18),
+      const Radius.circular(20), // 22 -> 20
     );
     canvas.drawRRect(rrect, background);
 
     paintImage(
       canvas: canvas,
-      rect: const Rect.fromLTWH(10, 10, 160, 120),
+      rect: const Rect.fromLTWH(12, 12, 206, 155), // 이미지 영역 축소 (15,15,250,190 -> 12,12,206,155)
       image: image,
       fit: BoxFit.cover,
     );
@@ -588,29 +707,29 @@ class CustomMarkerHelper {
         text: title,
         style: const TextStyle(
           color: Colors.black87,
-          fontSize: 14,
+          fontSize: 16, // 18 -> 16 (약간 축소)
           fontWeight: FontWeight.bold,
         ),
       ),
       textDirection: ui.TextDirection.ltr,
       maxLines: 1,
       ellipsis: '…',
-    )..layout(maxWidth: 160);
+    )..layout(maxWidth: 206); // 250 -> 206
 
     final pricePainter = TextPainter(
       text: TextSpan(
         text: price,
         style: const TextStyle(
           color: Colors.teal,
-          fontSize: 13,
+          fontSize: 15, // 16 -> 15 (약간 축소)
           fontWeight: FontWeight.w600,
         ),
       ),
       textDirection: ui.TextDirection.ltr,
-    )..layout(maxWidth: 160);
+    )..layout(maxWidth: 206); // 250 -> 206
 
-    titlePainter.paint(canvas, const Offset(10, 140));
-    pricePainter.paint(canvas, const Offset(10, 160));
+    titlePainter.paint(canvas, const Offset(12, 180)); // 15,220 -> 12,180
+    pricePainter.paint(canvas, const Offset(12, 200)); // 15,245 -> 12,200
 
     final picture = recorder.endRecording();
     final img = await picture.toImage(width.toInt(), height.toInt());

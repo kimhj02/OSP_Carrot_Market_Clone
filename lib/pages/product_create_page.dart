@@ -466,31 +466,21 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
   }
 
   Widget _buildTypeSelector() {
-    return Row(
-      children: ListingType.values.map((type) {
-        final isSelected = _type == type;
-        return Expanded(
-          child: GestureDetector(
-            onTap: () => setState(() => _type = type),
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 4),
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                color: isSelected ? Colors.teal : Colors.grey[200],
-                borderRadius: BorderRadius.circular(12),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                type == ListingType.market ? '중고거래' : '같이사요',
-                style: TextStyle(
-                  color: isSelected ? Colors.white : Colors.black87,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-        );
-      }).toList(),
+    // 중고거래만 표시 (같이사요는 별도 페이지에서 처리)
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.teal,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      alignment: Alignment.center,
+      child: const Text(
+        '중고거래',
+        style: TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
     );
   }
 
