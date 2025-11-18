@@ -1,3 +1,11 @@
+/// 상품 수정 페이지
+///
+/// 기존 상품 정보를 수정하는 화면입니다.
+///
+/// @author Flutter Sandbox
+/// @version 1.0.0
+/// @since 2024-01-01
+
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -17,33 +25,72 @@ import 'package:flutter_sandbox/providers/email_auth_provider.dart';
 import 'package:flutter_sandbox/services/local_app_repository.dart';
 import 'package:flutter_sandbox/config/app_config.dart';
 
-class ProductCreatePage extends StatefulWidget {
-  const ProductCreatePage({super.key});
+class ProductEditPage extends StatefulWidget {
+  final Product product;
+
+  const ProductEditPage({
+    super.key,
+    required this.product,
+  });
 
   @override
-  State<ProductCreatePage> createState() => _ProductCreatePageState();
+  State<ProductEditPage> createState() => _ProductEditPageState();
 }
 
-class _ProductCreatePageState extends State<ProductCreatePage> {
+class _ProductEditPageState extends State<ProductEditPage> {
   final _formKey = GlobalKey<FormState>();
-  final _titleController = TextEditingController();
-  final _priceController = TextEditingController();
-  final _descriptionController = TextEditingController();
-  final _imageUrlsController = TextEditingController();
+  late final TextEditingController _titleController;
+  late final TextEditingController _priceController;
+  late final TextEditingController _descriptionController;
+  late final TextEditingController _imageUrlsController;
   final ImagePicker _imagePicker = ImagePicker();
   List<XFile> _selectedImages = [];
-  final _groupItemController = TextEditingController();
-  final _groupMaxMembersController = TextEditingController();
-  final _groupCurrentMembersController = TextEditingController(text: '1');
-  final _groupPricePerPersonController = TextEditingController();
-  final _groupMeetTextController = TextEditingController();
+  late final TextEditingController _groupItemController;
+  late final TextEditingController _groupMaxMembersController;
+  late final TextEditingController _groupCurrentMembersController;
+  late final TextEditingController _groupPricePerPersonController;
+  late final TextEditingController _groupMeetTextController;
 
-  ListingType _type = ListingType.market;
-  ProductCategory _category = ProductCategory.digital;
+  late ProductCategory _category;
   DateTime? _orderDeadline;
   List<AppGeoPoint> _selectedLocations = [];
 
   bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController(text: widget.product.title);
+    _priceController = TextEditingController(text: widget.product.price.toString());
+    _descriptionController = TextEditingController(text: widget.product.description);
+    _imageUrlsController = TextEditingController(text: widget.product.imageUrls.join(', '));
+    _category = widget.product.category;
+    
+    // 위치 정보 초기화
+    if (widget.product.x != 0.0 && widget.product.y != 0.0) {
+      _selectedLocations = [
+        AppGeoPoint(latitude: widget.product.x, longitude: widget.product.y),
+      ];
+    }
+    
+    // 공동구매 정보 초기화 (있는 경우)
+    final listing = LocalAppRepository.instance.getListing(widget.product.id);
+    if (listing?.groupBuy != null) {
+      final groupBuy = listing!.groupBuy!;
+      _groupItemController = TextEditingController(text: groupBuy.itemSummary);
+      _groupMaxMembersController = TextEditingController(text: groupBuy.maxMembers.toString());
+      _groupCurrentMembersController = TextEditingController(text: groupBuy.currentMembers.toString());
+      _groupPricePerPersonController = TextEditingController(text: groupBuy.pricePerPerson.toString());
+      _groupMeetTextController = TextEditingController(text: groupBuy.meetPlaceText);
+      _orderDeadline = groupBuy.orderDeadline;
+    } else {
+      _groupItemController = TextEditingController();
+      _groupMaxMembersController = TextEditingController();
+      _groupCurrentMembersController = TextEditingController(text: '1');
+      _groupPricePerPersonController = TextEditingController();
+      _groupMeetTextController = TextEditingController();
+    }
+  }
 
   @override
   void dispose() {
@@ -105,14 +152,16 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
   Future<void> _pickDeadline() async {
     final date = await showDatePicker(
       context: context,
-      initialDate: DateTime.now(),
+      initialDate: _orderDeadline ?? DateTime.now(),
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 60)),
     );
     if (date == null) return;
     final time = await showTimePicker(
       context: context,
-      initialTime: TimeOfDay.now(),
+      initialTime: _orderDeadline != null
+          ? TimeOfDay.fromDateTime(_orderDeadline!)
+          : TimeOfDay.now(),
     );
     if (time == null) return;
     setState(() {
@@ -148,8 +197,8 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
       // Firebase 사용 시 이미지를 Firebase Storage에 업로드
       if (AppConfig.useFirebase && _selectedImages.isNotEmpty) {
         final storage = FirebaseStorage.instance;
-        final user = FirebaseAuth.instance.currentUser;
-        if (user == null) {
+        final authUser = FirebaseAuth.instance.currentUser;
+        if (authUser == null) {
           _showMessage('로그인이 필요합니다.');
           setState(() => _isSubmitting = false);
           return;
@@ -158,7 +207,7 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
         for (var imageFile in _selectedImages) {
           try {
             final fileName = '${DateTime.now().millisecondsSinceEpoch}_${path.basename(imageFile.path)}';
-            final ref = storage.ref().child('products/${user.uid}/$fileName');
+            final ref = storage.ref().child('products/${authUser.uid}/$fileName');
             await ref.putFile(File(imageFile.path));
             final downloadUrl = await ref.getDownloadURL();
             images.add(downloadUrl);
@@ -191,9 +240,15 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
           .where((url) => url.isNotEmpty)
           .toList();
       images.addAll(urlImages);
+      
+      // 기존 이미지가 있고 새로 선택한 이미지가 없으면 기존 이미지 유지
+      if (images.isEmpty) {
+        images = widget.product.imageUrls;
+      }
 
       GroupBuyInfo? groupInfo;
-      if (_type == ListingType.groupBuy) {
+      final listing = LocalAppRepository.instance.getListing(widget.product.id);
+      if (listing?.type == ListingType.groupBuy) {
         if (_groupItemController.text.trim().isEmpty ||
             _groupMaxMembersController.text.trim().isEmpty ||
             _groupPricePerPersonController.text.trim().isEmpty ||
@@ -214,94 +269,62 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
         );
       }
 
-      // Firebase 사용 시 Firestore에 저장
+      // Firebase 사용 시 Firestore 업데이트
       if (AppConfig.useFirebase) {
         final firestore = FirebaseFirestore.instance;
-        final authUser = FirebaseAuth.instance.currentUser;
-        if (authUser == null) {
-          _showMessage('로그인이 필요합니다.');
-          setState(() => _isSubmitting = false);
-          return;
-        }
-
-        // 선택한 첫 번째 위치에 따라 실제 지역을 결정
         final primaryLocation = _selectedLocations.first;
-        final actualRegion = LocalAppRepository.instance.getRegionByLocation(
-          primaryLocation.latitude,
-          primaryLocation.longitude,
-        ) ?? user.region;
-
-        final productData = {
-          'type': _type == ListingType.market ? 'market' : 'groupBuy',
+        
+        final updateData = <String, dynamic>{
           'title': _titleController.text.trim(),
           'price': int.tryParse(_priceController.text.trim()) ?? 0,
           'location': GeoPoint(primaryLocation.latitude, primaryLocation.longitude),
           'meetLocations': _selectedLocations.map((loc) => 
             GeoPoint(loc.latitude, loc.longitude)).toList(),
-          'images': images.isEmpty ? ['lib/dummy_data/아이폰.jpeg'] : images,
+          'images': images.isEmpty ? widget.product.imageUrls : images,
           'category': _category.index,
-          'status': 0, // ListingStatus.onSale
-          'region': {
-            'code': actualRegion.code,
-            'name': actualRegion.name,
-            'level': actualRegion.level,
-            'parent': actualRegion.parent,
-          },
-          'universityId': user.universityId,
-          'sellerUid': user.uid,
-          'sellerName': user.displayName,
-          'sellerPhotoUrl': user.photoUrl,
-          'likeCount': 0,
-          'viewCount': 0,
           'description': _descriptionController.text.trim(),
-          'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
-          'likedUserIds': [],
-          if (groupInfo != null) 'groupBuy': {
+        };
+
+        if (groupInfo != null) {
+          updateData['groupBuy'] = {
             'itemSummary': groupInfo.itemSummary,
             'maxMembers': groupInfo.maxMembers,
             'currentMembers': groupInfo.currentMembers,
             'pricePerPerson': groupInfo.pricePerPerson,
             'orderDeadline': Timestamp.fromDate(groupInfo.orderDeadline),
             'meetPlaceText': groupInfo.meetPlaceText,
-          },
-        };
+          };
+        }
 
-        await firestore.collection('products').add(productData);
+        await firestore.collection('products')
+            .doc(widget.product.id)
+            .update(updateData);
 
         if (mounted) {
-          _showMessage('상품이 등록되었습니다!', isError: false);
+          _showMessage('상품이 수정되었습니다!', isError: false);
           Navigator.pop(context, true);
         }
       } else {
         // 로컬 모드
-        final primaryLocation = _selectedLocations.first;
-        final actualRegion = LocalAppRepository.instance.getRegionByLocation(
-          primaryLocation.latitude,
-          primaryLocation.longitude,
-        ) ?? user.region;
-
-        await LocalAppRepository.instance.createListing(
-          type: _type,
+        await LocalAppRepository.instance.updateListing(
+          listingId: widget.product.id,
           title: _titleController.text.trim(),
           price: int.tryParse(_priceController.text.trim()) ?? 0,
           meetLocations: _selectedLocations,
-          images: images.isEmpty ? ['lib/dummy_data/아이폰.jpeg'] : images,
+          images: images.isEmpty ? widget.product.imageUrls : images,
           category: _category,
-          region: actualRegion,
-          universityId: user.universityId,
-          seller: user,
           description: _descriptionController.text.trim(),
           groupBuy: groupInfo,
         );
 
         if (mounted) {
-          _showMessage('상품이 등록되었습니다!', isError: false);
+          _showMessage('상품이 수정되었습니다!', isError: false);
           Navigator.pop(context, true);
         }
       }
     } catch (e) {
-      _showMessage('등록에 실패했습니다: $e');
+      _showMessage('수정에 실패했습니다: $e');
     } finally {
       if (mounted) {
         setState(() => _isSubmitting = false);
@@ -320,9 +343,12 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
 
   @override
   Widget build(BuildContext context) {
+    final listing = LocalAppRepository.instance.getListing(widget.product.id);
+    final isGroupBuy = listing?.type == ListingType.groupBuy;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('상품 등록'),
+        title: const Text('상품 수정'),
       ),
       body: Form(
         key: _formKey,
@@ -331,8 +357,6 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildTypeSelector(),
-              const SizedBox(height: 16),
               _buildCategorySelector(),
               const SizedBox(height: 16),
               TextFormField(
@@ -446,7 +470,7 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
               const SizedBox(height: 16),
               _buildLocationSelector(),
               const SizedBox(height: 16),
-              if (_type == ListingType.groupBuy) _buildGroupBuyFields(),
+              if (isGroupBuy) _buildGroupBuyFields(),
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
@@ -455,30 +479,11 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
                   onPressed: _isSubmitting ? null : _submit,
                   child: _isSubmitting
                       ? const CircularProgressIndicator()
-                      : const Text('상품 등록'),
+                      : const Text('상품 수정'),
                 ),
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTypeSelector() {
-    // 중고거래만 표시 (같이사요는 별도 페이지에서 처리)
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.teal,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      alignment: Alignment.center,
-      child: const Text(
-        '중고거래',
-        style: TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.bold,
         ),
       ),
     );
@@ -644,3 +649,4 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
     }
   }
 }
+

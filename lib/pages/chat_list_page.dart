@@ -14,10 +14,15 @@
 /// @since 2024-01-01
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_sandbox/pages/chat_page.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import 'package:flutter_sandbox/config/app_config.dart';
+import 'package:flutter_sandbox/providers/email_auth_provider.dart';
+import 'package:flutter_sandbox/services/local_app_repository.dart';
+import 'package:flutter_sandbox/models/firestore_schema.dart';
 
 /// 채팅방 필터 타입
 enum ChatFilter {
@@ -25,6 +30,13 @@ enum ChatFilter {
   selling,  // 판매
   buying,   // 구매
   unread,   // 안 읽은 채팅방
+}
+
+/// 채팅방 정렬 방식
+enum ChatSortType {
+  latest,   // 최신순
+  unread,   // 안 읽은 순
+  name,     // 이름순
 }
 
 /// 채팅방 모델
@@ -79,6 +91,11 @@ class ChatRoom {
 
   /// 상대방 이름 가져오기
   String getOpponentName(String currentUserId) {
+    if (type == 'groupBuy') {
+      // 그룹 채팅: 상품 제목 표시
+      return productTitle.isNotEmpty ? productTitle : '같이사요 채팅';
+    }
+    
     final opponentId = participants.firstWhere(
           (id) => id != currentUserId,
       orElse: () => '',
@@ -111,27 +128,13 @@ class ChatListPage extends StatefulWidget {
 
 class _ChatListPageState extends State<ChatListPage> {
   ChatFilter _selectedFilter = ChatFilter.all;
-  String? _currentUserId;
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeUser();
-  }
-
-  /// 현재 사용자 초기화
-  void _initializeUser() {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      setState(() {
-        _currentUserId = user.uid;
-      });
-    }
-  }
+  ChatSortType _sortType = ChatSortType.latest;
+  bool _notificationsEnabled = true;
 
   @override
   Widget build(BuildContext context) {
-    if (_currentUserId == null) {
+    final currentUserId = context.watch<EmailAuthProvider>().user?.uid;
+    if (currentUserId == null) {
       return Scaffold(
         appBar: AppBar(
           title: const Text('채팅'),
@@ -143,70 +146,89 @@ class _ChatListPageState extends State<ChatListPage> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: const Text(
-          '채팅',
-          style: TextStyle(
-            color: Colors.black,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.tune, color: Colors.black),
-            onPressed: () {
-              // 정렬 기능 (향후 구현)
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.bookmark_border, color: Colors.black),
-            onPressed: () {
-              // 저장된 메시지 (향후 구현)
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined, color: Colors.black),
-            onPressed: () {
-              // 알림 설정 (향후 구현)
-            },
-          ),
-        ],
-      ),
-      body: Column(
+      backgroundColor: Colors.grey[50],
+      body: SafeArea(
+        child: Column(
         children: [
-          // 필터 버튼들
+          // 헤더와 필터 버튼들
           _buildFilterButtons(),
 
           // 채팅 리스트
           Expanded(
-            child: _buildChatList(),
+            child: Container(
+              color: Colors.white,
+              child: _buildChatList(currentUserId),
+            ),
           ),
         ],
+        ),
       ),
     );
   }
 
   /// 필터 버튼 영역
   Widget _buildFilterButtons() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            _buildFilterButton('전체', ChatFilter.all),
-            const SizedBox(width: 8),
-            _buildFilterButton('판매', ChatFilter.selling),
-            const SizedBox(width: 8),
-            _buildFilterButton('구매', ChatFilter.buying),
-            const SizedBox(width: 8),
-            _buildFilterButton('안 읽은 채팅방', ChatFilter.unread),
-          ],
+    return Column(
+      children: [
+        // 헤더 (제목 + 액션 버튼)
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+          child: Row(
+            children: [
+              const Text(
+                '채팅',
+                style: TextStyle(
+                  color: Colors.black87,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.tune, color: Colors.black87, size: 28),
+                iconSize: 28,
+                onPressed: () => _showSortDialog(),
+              ),
+              IconButton(
+                icon: Icon(
+                  _notificationsEnabled
+                      ? Icons.notifications
+                      : Icons.notifications_off,
+                  color: Colors.black87,
+                  size: 28,
+                ),
+                iconSize: 28,
+                onPressed: () => _showNotificationSettings(),
+              ),
+            ],
+          ),
         ),
-      ),
+        // 필터 버튼들
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildFilterButton('전체', ChatFilter.all),
+                const SizedBox(width: 8),
+                _buildFilterButton('판매', ChatFilter.selling),
+                const SizedBox(width: 8),
+                _buildFilterButton('구매', ChatFilter.buying),
+                const SizedBox(width: 8),
+                _buildFilterButton('안 읽은 채팅방', ChatFilter.unread),
+              ],
+            ),
+          ),
+        ),
+        // 구분선
+        Container(
+          height: 1,
+          color: Colors.grey[200],
+        ),
+      ],
     );
   }
 
@@ -223,16 +245,17 @@ class _ChatListPageState extends State<ChatListPage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.black : Colors.white,
+          color: isSelected ? Colors.teal : Colors.white,
           border: Border.all(
-            color: isSelected ? Colors.black : Colors.grey[300]!,
+            color: isSelected ? Colors.teal : Colors.grey[300]!,
+            width: isSelected ? 1.5 : 1,
           ),
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
           label,
           style: TextStyle(
-            color: isSelected ? Colors.white : Colors.black,
+            color: isSelected ? Colors.white : Colors.black87,
             fontSize: 14,
             fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
           ),
@@ -242,59 +265,88 @@ class _ChatListPageState extends State<ChatListPage> {
   }
 
   /// 채팅 리스트 빌드
-  Widget _buildChatList() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('chatRooms')
-          .where('participants', arrayContains: _currentUserId)
-          .orderBy('lastMessageTime', descending: true)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.error_outline, size: 64, color: Colors.red),
-                const SizedBox(height: 16),
-                Text('오류가 발생했습니다\n${snapshot.error}'),
-              ],
-            ),
-          );
-        }
-
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(),
-          );
-        }
-
-        final chatRooms = snapshot.data?.docs
-            .map((doc) => ChatRoom.fromFirestore(doc))
-            .toList() ?? [];
-
-        // 필터 적용
-        final filteredChatRooms = _applyFilter(chatRooms);
-
-        if (filteredChatRooms.isEmpty) {
-          return _buildEmptyState();
-        }
-
-        return ListView.separated(
-          itemCount: filteredChatRooms.length,
-          separatorBuilder: (context, index) => const Divider(
-            height: 1,
-            indent: 80,
-          ),
-          itemBuilder: (context, index) {
-            final chatRoom = filteredChatRooms[index];
-            return _ChatListItem(
-              chatRoom: chatRoom,
-              currentUserId: _currentUserId!,
-              onTap: () {
-                _navigateToChatPage(chatRoom);
-              },
+  Widget _buildChatList(String currentUserId) {
+    if (AppConfig.useFirebase) {
+      return StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('chatRooms')
+            .where('participants', arrayContains: currentUserId)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                  const SizedBox(height: 16),
+                  Text('오류가 발생했습니다\n${snapshot.error}'),
+                ],
+              ),
             );
+          }
+
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final chatRooms = snapshot.data?.docs
+                  .map((doc) => ChatRoom.fromFirestore(doc))
+                  .toList() ??
+              [];
+
+          var filteredChatRooms = _applyFilter(chatRooms, currentUserId);
+          filteredChatRooms = _applySort(filteredChatRooms, currentUserId);
+
+          if (filteredChatRooms.isEmpty) {
+            return _buildEmptyState();
+          }
+
+          return _buildChatRoomList(filteredChatRooms, currentUserId);
+        },
+      );
+    } else {
+      return StreamBuilder<List<AppChatRoom>>(
+        stream: LocalAppRepository.instance.watchChatRooms(currentUserId),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(
+              child: Text('오류가 발생했습니다\n${snapshot.error}'),
+            );
+          }
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final rooms = snapshot.data ?? [];
+          final converted = rooms
+              .map((room) => _convertLocalRoom(room))
+              .toList(growable: false);
+          var filtered = _applyFilter(converted, currentUserId);
+          filtered = _applySort(filtered, currentUserId);
+          if (filtered.isEmpty) {
+            return _buildEmptyState();
+          }
+          return _buildChatRoomList(filtered, currentUserId);
+        },
+      );
+    }
+  }
+
+  Widget _buildChatRoomList(List<ChatRoom> chatRooms, String currentUserId) {
+    return ListView.separated(
+      itemCount: chatRooms.length,
+      separatorBuilder: (context, index) => Divider(
+        height: 1,
+        indent: 80,
+        color: Colors.grey[200],
+      ),
+      itemBuilder: (context, index) {
+        final chatRoom = chatRooms[index];
+        return _ChatListItem(
+          chatRoom: chatRoom,
+          currentUserId: currentUserId,
+          onTap: () {
+            _navigateToChatPage(chatRoom, currentUserId);
           },
         );
       },
@@ -302,36 +354,181 @@ class _ChatListPageState extends State<ChatListPage> {
   }
 
   /// 필터 적용
-  List<ChatRoom> _applyFilter(List<ChatRoom> chatRooms) {
+  List<ChatRoom> _applyFilter(List<ChatRoom> chatRooms, String currentUserId) {
     switch (_selectedFilter) {
       case ChatFilter.all:
         return chatRooms;
 
       case ChatFilter.selling:
         return chatRooms.where((room) =>
-            room.isSellingChat(_currentUserId!)
+            room.isSellingChat(currentUserId)
         ).toList();
 
       case ChatFilter.buying:
         return chatRooms.where((room) =>
-            room.isBuyingChat(_currentUserId!)
+            room.isBuyingChat(currentUserId)
         ).toList();
 
       case ChatFilter.unread:
         return chatRooms.where((room) =>
-        room.getMyUnreadCount(_currentUserId!) > 0
+        room.getMyUnreadCount(currentUserId) > 0
         ).toList();
     }
   }
 
+  /// 정렬 적용
+  List<ChatRoom> _applySort(List<ChatRoom> chatRooms, String currentUserId) {
+    final sorted = List<ChatRoom>.from(chatRooms);
+    
+    switch (_sortType) {
+      case ChatSortType.latest:
+        sorted.sort((a, b) {
+          final timeA = a.lastMessageTime ?? DateTime(1970);
+          final timeB = b.lastMessageTime ?? DateTime(1970);
+          return timeB.compareTo(timeA);
+        });
+        break;
+      case ChatSortType.unread:
+        sorted.sort((a, b) {
+          final unreadA = a.getMyUnreadCount(currentUserId);
+          final unreadB = b.getMyUnreadCount(currentUserId);
+          if (unreadA != unreadB) {
+            return unreadB.compareTo(unreadA);
+          }
+          final timeA = a.lastMessageTime ?? DateTime(1970);
+          final timeB = b.lastMessageTime ?? DateTime(1970);
+          return timeB.compareTo(timeA);
+        });
+        break;
+      case ChatSortType.name:
+        sorted.sort((a, b) {
+          final nameA = a.getOpponentName(currentUserId);
+          final nameB = b.getOpponentName(currentUserId);
+          return nameA.compareTo(nameB);
+        });
+        break;
+    }
+    
+    return sorted;
+  }
+
+  /// 정렬 다이얼로그 표시
+  void _showSortDialog() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('정렬 방식'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: ChatSortType.values.map((sortType) {
+              return RadioListTile<ChatSortType>(
+                title: Text(_getSortTypeName(sortType)),
+                value: sortType,
+                groupValue: _sortType,
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() {
+                      _sortType = value;
+                    });
+                    Navigator.pop(context);
+                  }
+                },
+              );
+            }).toList(),
+          ),
+        );
+      },
+    );
+  }
+
+  /// 정렬 타입 이름 반환
+  String _getSortTypeName(ChatSortType sortType) {
+    switch (sortType) {
+      case ChatSortType.latest:
+        return '최신순';
+      case ChatSortType.unread:
+        return '안 읽은 순';
+      case ChatSortType.name:
+        return '이름순';
+    }
+  }
+
+  /// 알림 설정 다이얼로그 표시
+  void _showNotificationSettings() {
+    final currentUserId = context.read<EmailAuthProvider>().user?.uid;
+    if (currentUserId == null) return;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('알림 설정'),
+          content: StatefulBuilder(
+            builder: (context, setState) {
+              return SwitchListTile(
+                title: const Text('채팅 알림'),
+                subtitle: const Text('새 메시지가 도착하면 알림을 받습니다'),
+                value: _notificationsEnabled,
+                onChanged: (value) {
+                  setState(() {
+                    _notificationsEnabled = value;
+                  });
+                  this.setState(() {
+                    _notificationsEnabled = value;
+                  });
+                  
+                  // Firestore에 알림 설정 저장
+                  if (AppConfig.useFirebase) {
+                    FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(currentUserId)
+                        .update({
+                      'notificationsEnabled': value,
+                    }).catchError((e) {
+                      debugPrint('알림 설정 저장 실패: $e');
+                    });
+                  }
+                },
+              );
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('확인'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  ChatRoom _convertLocalRoom(AppChatRoom room) {
+    final listing = LocalAppRepository.instance.getListing(room.listingId);
+    return ChatRoom(
+      id: room.id,
+      participants: room.participants,
+      participantNames: Map<String, String>.from(room.participantNames),
+      productId: room.listingId,
+      productTitle: room.listingTitle,
+      productImage: room.listingImage ?? '',
+      productPrice: listing?.price ?? 0,
+      lastMessage: room.lastMessage,
+      lastMessageTime: room.lastMessageTime,
+      unreadCount: Map<String, int>.from(room.unread),
+      type: room.listingType == ListingType.groupBuy ? 'group' : 'purchase',
+    );
+  }
+
   /// 채팅 페이지로 이동
-  void _navigateToChatPage(ChatRoom chatRoom) {
+  void _navigateToChatPage(ChatRoom chatRoom, String currentUserId) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => ChatPage(
           chatRoomId: chatRoom.id,  // ✅ chatRoomId 전달
-          opponentName: chatRoom.getOpponentName(_currentUserId!),
+          opponentName: chatRoom.getOpponentName(currentUserId),
         ),
       ),
     ).then((_) {
@@ -387,7 +584,10 @@ class _ChatListItem extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      child: Padding(
+      splashColor: Colors.teal.withOpacity(0.1),
+      highlightColor: Colors.teal.withOpacity(0.05),
+      child: Container(
+        color: Colors.white,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [

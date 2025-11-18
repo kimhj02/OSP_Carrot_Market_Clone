@@ -1,56 +1,54 @@
-/// 사용자 프로필 페이지
+/// 판매자 프로필 페이지
 ///
-/// 당근 마켓 스타일의 사용자 프로필 화면입니다.
-/// 사용자 기본 정보와 내가 등록한 상품 목록을 표시합니다.
+/// 판매자 정보와 판매 상품 목록을 표시하는 화면입니다.
 ///
 /// 주요 기능:
-/// - 사용자 기본 정보 표시
-/// - 내가 등록한 상품 목록 표시
-/// - 판매중/예약중/판매완료 탭 구분
-/// - 로그아웃 기능
+/// - 판매자 기본 정보 표시
+/// - 판매자가 등록한 상품 목록 표시
+/// - 판매중/판매완료 탭 구분
 ///
 /// @author Flutter Sandbox
 /// @version 1.0.0
 /// @since 2024-01-01
 
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart' as kakao;
 import 'package:cloud_firestore/cloud_firestore.dart';
-
-import 'package:flutter_sandbox/providers/kakao_login_provider.dart';
-import 'package:flutter_sandbox/providers/email_auth_provider.dart' as app_auth;
 import 'package:flutter_sandbox/models/product.dart';
 import 'package:flutter_sandbox/pages/product_detail_page.dart';
-import 'package:flutter_sandbox/services/admin_service.dart';
-import 'package:flutter_sandbox/pages/admin_page.dart';
-import 'package:flutter_sandbox/models/firestore_schema.dart';
 import 'package:flutter_sandbox/config/app_config.dart';
 import 'package:flutter_sandbox/services/local_app_repository.dart';
 
-/// 사용자 프로필 페이지를 나타내는 위젯
-class ProfilePage extends StatefulWidget {
-  const ProfilePage({super.key});
+/// 판매자 프로필 페이지를 나타내는 위젯
+class SellerProfilePage extends StatefulWidget {
+  /// 판매자 ID
+  final String sellerId;
+  
+  /// 판매자 닉네임
+  final String sellerNickname;
+  
+  /// 판매자 프로필 이미지 URL (선택사항)
+  final String? sellerProfileImageUrl;
+
+  const SellerProfilePage({
+    super.key,
+    required this.sellerId,
+    required this.sellerNickname,
+    this.sellerProfileImageUrl,
+  });
 
   @override
-  State<ProfilePage> createState() => _ProfilePageState();
+  State<SellerProfilePage> createState() => _SellerProfilePageState();
 }
 
-class _ProfilePageState extends State<ProfilePage>
+class _SellerProfilePageState extends State<SellerProfilePage>
     with SingleTickerProviderStateMixin {
   /// 상품 상태 탭 컨트롤러
   late TabController _tabController;
 
-  /// 관리자 페이지 접근을 위한 설정 아이콘 탭 횟수
-  int _settingsTapCount = 0;
-
-  /// 관리자 서비스
-  final AdminService _adminService = AdminService();
-
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
   }
 
   @override
@@ -59,7 +57,7 @@ class _ProfilePageState extends State<ProfilePage>
     super.dispose();
   }
 
-  /// Firestore 문서를 Product로 변환
+  /// Firestore Document를 Product로 변환하는 헬퍼 메서드
   Product _firestoreDocToProduct(String docId, Map<String, dynamic> data, String? viewerUid) {
     final location = data['location'] as GeoPoint?;
     final region = data['region'] as Map<String, dynamic>?;
@@ -89,23 +87,18 @@ class _ProfilePageState extends State<ProfilePage>
     );
   }
 
-  /// 현재 선택된 탭에 해당하는 상품 목록을 필터링
-  List<Product> _filterProducts(List<Product> products, int tabIndex, String? currentUserId) {
+  /// 상품 목록을 필터링하는 메서드
+  List<Product> _filterProducts(List<Product> products, int tabIndex) {
     switch (tabIndex) {
-      case 0: // 판매중 - 내가 판매중인 상품만
+      case 0: // 판매중
         return products
-            .where((p) => p.status == ProductStatus.onSale && p.sellerId == currentUserId)
+            .where((p) => p.status == ProductStatus.onSale || 
+                         p.status == ProductStatus.reserved)
             .toList();
-      case 1: // 예약중 - 내가 예약중인 상품만
+      case 1: // 판매완료
         return products
-            .where((p) => p.status == ProductStatus.reserved && p.sellerId == currentUserId)
+            .where((p) => p.status == ProductStatus.sold)
             .toList();
-      case 2: // 판매완료 - 내가 판매완료한 상품만
-        return products
-            .where((p) => p.status == ProductStatus.sold && p.sellerId == currentUserId)
-            .toList();
-      case 3: // 찜한 상품 - 찜한 상품만 (내 상품이 아닌 것도 포함)
-        return products.where((p) => p.isLiked).toList();
       default:
         return [];
     }
@@ -115,185 +108,131 @@ class _ProfilePageState extends State<ProfilePage>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[50],
-      body: SafeArea(
-        child: Consumer2<KakaoLoginProvider, app_auth.EmailAuthProvider>(
-        builder: (context, kakaoProvider, emailProvider, child) {
-          final kakaoUser = kakaoProvider.user;
-          final emailUser = emailProvider.user;
-          final isLoggedIn = kakaoUser != null || emailUser != null;
-          final isKakaoLogin = kakaoUser != null;
-
-          return Column(
-            children: [
-              // 헤더 (제목 + 설정 버튼)
-              _buildHeader(context),
-              
-              // 프로필 정보 섹션
-              _buildProfileSection(
-                context,
-                kakaoUser,
-                emailUser,
-                isLoggedIn,
-                isKakaoLogin,
-                kakaoProvider,
-                emailProvider,
-              ),
-
-              // 상품 상태 탭
-              _buildTabBar(),
-
-              // 상품 목록
-              Expanded(
-                child: _buildProductList(),
-              ),
-            ],
-          );
-        },
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text(
+          '판매자 프로필',
+          style: TextStyle(
+            color: Colors.black,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ),
-    );
-  }
-
-  /// 헤더 위젯 (제목 + 설정 버튼)
-  Widget _buildHeader(BuildContext context) {
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
+      body: Column(
         children: [
-          const Text(
-            '나의 금오',
-            style: TextStyle(
-              color: Colors.black87,
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const Spacer(),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined, color: Colors.black87, size: 28),
-            iconSize: 28,
-            onPressed: () async {
-              _settingsTapCount++;
-              if (_settingsTapCount >= 10) {
-                _settingsTapCount = 0;
-                final isAdmin = await _adminService.isAdmin();
-                if (isAdmin && mounted) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const AdminPage()),
-                  );
-                } else {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('관리자 권한이 없습니다'),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
-                  }
-                }
-              } else {
-                // 3초 후 탭 횟수 리셋
-                Future.delayed(const Duration(seconds: 3), () {
-                  if (mounted) {
-                    setState(() {
-                      _settingsTapCount = 0;
-                    });
-                  }
-                });
-              }
-            },
+          // 판매자 정보 섹션
+          _buildSellerSection(),
+
+          // 상품 상태 탭
+          _buildTabBar(),
+
+          // 상품 목록
+          Expanded(
+            child: _buildProductList(),
           ),
         ],
       ),
     );
   }
 
-  /// 프로필 정보 섹션을 생성하는 위젯
-  Widget _buildProfileSection(
-    BuildContext context,
-    kakao.User? kakaoUser,
-    AppUserProfile? emailUser,
-    bool isLoggedIn,
-    bool isKakaoLogin,
-    KakaoLoginProvider kakaoProvider,
-    app_auth.EmailAuthProvider emailProvider,
-  ) {
+  /// 판매자 정보 섹션을 생성하는 위젯
+  Widget _buildSellerSection() {
+    if (AppConfig.useFirebase) {
+      return StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('products')
+            .where('sellerUid', isEqualTo: widget.sellerId)
+            .snapshots(),
+        builder: (context, snapshot) {
+          final products = snapshot.data?.docs.map((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            return _firestoreDocToProduct(doc.id, data, null);
+          }).toList() ?? [];
+          
+          return _buildSellerInfo(products);
+        },
+      );
+    } else {
+      final products = LocalAppRepository.instance
+          .getProducts(viewerUid: null)
+          .where((p) => p.sellerId == widget.sellerId)
+          .toList();
+      return _buildSellerInfo(products);
+    }
+  }
+
+  /// 판매자 정보를 표시하는 위젯
+  Widget _buildSellerInfo(List<Product> products) {
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.all(20),
       child: Column(
         children: [
-          // 프로필 이미지
+          // 판매자 프로필 이미지
           CircleAvatar(
             radius: 40,
-            backgroundImage: isKakaoLogin
-                ? (kakaoUser?.kakaoAccount?.profile?.profileImageUrl != null
-                      ? NetworkImage(
-                          kakaoUser!.kakaoAccount!.profile!.profileImageUrl!,
-                        )
-                      : null)
-                : (emailUser?.photoUrl != null
-                      ? NetworkImage(emailUser!.photoUrl!)
-                      : null),
-            child:
-                (isKakaoLogin
-                    ? kakaoUser?.kakaoAccount?.profile?.profileImageUrl == null
-                    : emailUser?.photoUrl == null)
+            backgroundImage: widget.sellerProfileImageUrl != null
+                ? NetworkImage(widget.sellerProfileImageUrl!)
+                : null,
+            child: widget.sellerProfileImageUrl == null
                 ? const Icon(Icons.person, color: Colors.grey, size: 40)
                 : null,
           ),
           const SizedBox(height: 16),
 
-          // 사용자 이름
+          // 판매자 닉네임
           Text(
-            isKakaoLogin
-                ? (kakaoUser?.kakaoAccount?.profile?.nickname ?? '사용자')
-                : (emailUser?.displayName ?? emailUser?.email ?? '사용자'),
+            widget.sellerNickname,
             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
 
-          // 로그인 방식 및 이메일
-          Text(
-            isKakaoLogin
-                ? '카카오 로그인 • ID: ${kakaoUser?.id ?? ''}'
-                : '이메일 로그인 • ${emailUser?.email ?? ''}',
-            style: const TextStyle(fontSize: 14, color: Colors.grey),
-          ),
-          const SizedBox(height: 4),
-
-          // 위치 정보
-          const Text(
-            '강남구 역삼동',
-            style: TextStyle(fontSize: 14, color: Colors.grey),
-          ),
-          const SizedBox(height: 20),
-
-          // 로그아웃 버튼
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed: () async {
-                if (isKakaoLogin) {
-                  await kakaoProvider.logout();
-                } else {
-                  await emailProvider.logout();
-                }
-              },
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.teal,
-                side: const BorderSide(color: Colors.teal),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              child: const Text('로그아웃'),
-            ),
+          // 판매 상품 통계
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildStatItem('판매중', products
+                  .where((p) => p.status == ProductStatus.onSale || 
+                               p.status == ProductStatus.reserved)
+                  .length),
+              const SizedBox(width: 24),
+              _buildStatItem('판매완료', products
+                  .where((p) => p.status == ProductStatus.sold)
+                  .length),
+            ],
           ),
         ],
       ),
+    );
+  }
+
+  /// 통계 아이템을 생성하는 위젯
+  Widget _buildStatItem(String label, int count) {
+    return Column(
+      children: [
+        Text(
+          '$count',
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.teal,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 14,
+            color: Colors.grey,
+          ),
+        ),
+      ],
     );
   }
 
@@ -306,12 +245,9 @@ class _ProfilePageState extends State<ProfilePage>
         indicatorColor: Colors.teal,
         labelColor: Colors.teal,
         unselectedLabelColor: Colors.grey,
-        isScrollable: true,
         tabs: const [
           Tab(text: '판매중'),
-          Tab(text: '예약중'),
           Tab(text: '판매완료'),
-          Tab(text: '찜한 상품'),
         ],
         onTap: (index) {
           setState(() {});
@@ -322,16 +258,11 @@ class _ProfilePageState extends State<ProfilePage>
 
   /// 상품 목록을 빌드하는 위젯
   Widget _buildProductList() {
-    final currentUser = context.watch<app_auth.EmailAuthProvider>().user;
-    if (currentUser == null) {
-      return const Center(child: Text('로그인이 필요합니다'));
-    }
-
     if (AppConfig.useFirebase) {
       return StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('products')
-            .where('sellerUid', isEqualTo: currentUser.uid)
+            .where('sellerUid', isEqualTo: widget.sellerId)
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -344,63 +275,29 @@ class _ProfilePageState extends State<ProfilePage>
           
           final allProducts = snapshot.data?.docs.map((doc) {
             final data = doc.data() as Map<String, dynamic>;
-            return _firestoreDocToProduct(doc.id, data, currentUser.uid);
+            return _firestoreDocToProduct(doc.id, data, null);
           }).toList() ?? [];
           
           // 최신순으로 정렬 (클라이언트 측)
           allProducts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
           
-          // 찜한 상품도 가져오기 (찜한 상품 탭용)
-          return StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('products')
-                .where('likedUserIds', arrayContains: currentUser.uid)
-                .snapshots(),
-            builder: (context, likedSnapshot) {
-              final likedProducts = likedSnapshot.data?.docs.map((doc) {
-                final data = doc.data() as Map<String, dynamic>;
-                return _firestoreDocToProduct(doc.id, data, currentUser.uid);
-              }).toList() ?? [];
-              
-              // 최신순으로 정렬 (클라이언트 측)
-              likedProducts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-              
-              // 탭에 따라 다른 상품 목록 사용
-              // 판매중/예약중/판매완료 탭: 내 상품만
-              // 찜한 상품 탭: 찜한 상품만
-              final productsToShow = _tabController.index == 3
-                  ? likedProducts
-                  : allProducts;
-              
-              final filtered = _filterProducts(productsToShow, _tabController.index, currentUser.uid);
-              
-              if (filtered.isEmpty) {
-                return _buildEmptyState();
-              }
-              
-              return _buildProductGrid(filtered);
-            },
-          );
+          final filtered = _filterProducts(allProducts, _tabController.index);
+          
+          if (filtered.isEmpty) {
+            return _buildEmptyState();
+          }
+          
+          return _buildProductGrid(filtered);
         },
       );
     } else {
       // 로컬 모드
-      final allProducts = LocalAppRepository.instance
-          .getProducts(viewerUid: currentUser.uid)
-          .where((p) => p.sellerId == currentUser.uid)
+      final products = LocalAppRepository.instance
+          .getProducts(viewerUid: null)
+          .where((p) => p.sellerId == widget.sellerId)
           .toList();
       
-      final likedProducts = LocalAppRepository.instance
-          .getProducts(viewerUid: currentUser.uid)
-          .where((p) => p.isLiked)
-          .toList();
-      
-      // 탭에 따라 다른 상품 목록 사용
-      final productsToShow = _tabController.index == 3
-          ? likedProducts
-          : allProducts;
-      
-      final filtered = _filterProducts(productsToShow, _tabController.index, currentUser.uid);
+      final filtered = _filterProducts(products, _tabController.index);
       
       if (filtered.isEmpty) {
         return _buildEmptyState();
@@ -571,17 +468,12 @@ class _ProfilePageState extends State<ProfilePage>
           Icon(Icons.inbox_outlined, size: 64, color: Colors.grey[400]),
           const SizedBox(height: 16),
           Text(
-            '등록한 상품이 없습니다',
+            _getEmptyMessage(),
             style: TextStyle(
               fontSize: 18,
               color: Colors.grey[600],
               fontWeight: FontWeight.bold,
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            _getEmptyMessage(),
-            style: TextStyle(fontSize: 14, color: Colors.grey[500]),
           ),
         ],
       ),
@@ -592,15 +484,12 @@ class _ProfilePageState extends State<ProfilePage>
   String _getEmptyMessage() {
     switch (_tabController.index) {
       case 0:
-        return '판매할 상품을 등록해보세요';
+        return '판매중인 상품이 없습니다';
       case 1:
-        return '예약된 상품이 없습니다';
-      case 2:
         return '판매 완료된 상품이 없습니다';
-      case 3:
-        return '찜한 상품이 없습니다';
       default:
         return '';
     }
   }
 }
+

@@ -6,34 +6,41 @@
 /// 주요 기능:
 /// - 당근 마켓 스타일의 네비게이션 바
 /// - 로그인 상태에 따른 조건부 UI 렌더링
-/// - 상품 목록 표시 (향후 구현)
-/// - 지도 기능 (향후 구현)
-/// - 채팅 기능 (향후 구현)
+/// - 상품 목록 표시 (위치 필터링 지원)
+/// - 지도 기능 (위치 기반 상품 표시)
+/// - 채팅 기능 (실시간 메시지 송수신)
+/// - 위치 필터링 (현재 위치/학교 주변)
+/// - 검색 반경 조정 (500m, 1km, 2km, 5km)
 ///
 /// @author Flutter Sandbox
 /// @version 1.0.0
 /// @since 2024-01-01
 
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_sandbox/pages/search_page.dart';
 import 'package:provider/provider.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:flutter_sandbox/providers/kakao_login_provider.dart';
 import 'package:flutter_sandbox/providers/email_auth_provider.dart';
 import 'package:flutter_sandbox/pages/product_create_page.dart';
 import 'package:flutter_sandbox/pages/group_buy_create_page.dart';
 import 'package:flutter_sandbox/pages/product_detail_page.dart';
+import 'package:flutter_sandbox/config/app_config.dart';
 import 'package:flutter_sandbox/pages/chat_list_page.dart';
 import 'package:flutter_sandbox/pages/email_auth_page.dart';
 import 'package:flutter_sandbox/pages/map_page.dart';
 import 'package:flutter_sandbox/pages/profile_page.dart';
 import 'package:flutter_sandbox/models/product.dart';
-import 'package:flutter_sandbox/data/mock_products.dart';
 import 'package:flutter_sandbox/providers/ad_provider.dart';
 import 'package:flutter_sandbox/models/ad.dart';
 import 'package:flutter_sandbox/widgets/ad_card.dart';
+import 'package:flutter_sandbox/models/firestore_schema.dart';
+import 'package:flutter_sandbox/services/local_app_repository.dart';
+import 'package:flutter_sandbox/providers/location_provider.dart';
 
 /// 앱의 홈 페이지를 나타내는 위젯
 ///
@@ -82,17 +89,23 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildScaffold(BuildContext context, bool isLoggedIn) {
+    final AppUserProfile? appUser = context.watch<EmailAuthProvider>().user;
+    final locationLabel =
+        appUser != null ? _resolveLocationLabel(appUser) : '강남구 역삼동';
+    // 채팅(2)과 나의 금오(3) 탭에서는 AppBar 숨김
+    final shouldShowAppBar = IndexedStackState != 2 && IndexedStackState != 3;
     return Scaffold(
+      backgroundColor: Colors.grey[50],
       // 금오 마켓 스타일의 앱바
-      appBar: AppBar(
+      appBar: shouldShowAppBar ? AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
         title: Row(
           children: [
             // 금오 마켓 아이콘
             Container(
-              width: 24,
-              height: 24,
+              width: 32,
+              height: 32,
               decoration: const BoxDecoration(
                 color: Colors.teal,
                 shape: BoxShape.circle,
@@ -100,38 +113,94 @@ class _HomePageState extends State<HomePage> {
               child: const Icon(
                 Icons.local_grocery_store,
                 color: Colors.white,
-                size: 16,
+                size: 20,
               ),
             ),
-            const SizedBox(width: 8),
-            // 위치 정보 (탭하면 지도로 이동)
-            GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const MapScreen()),
-                );
-              },
-              child: const Row(
-                children: [
-                  Text(
-                    '강남구 역삼동',
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
+            const SizedBox(width: 10),
+            // 위치 정보
+            Row(
+              children: [
+                Consumer2<LocationProvider, EmailAuthProvider>(
+                  builder: (context, locationProvider, emailAuthProvider, child) {
+                    String displayText;
+                    if (locationProvider.isCurrentLocationSelected) {
+                      displayText = '내 현재 위치';
+                    } else if (locationProvider.isSchoolSelected) {
+                      // 학교 선택 시 이메일로 등록한 학교 이름 표시
+                      final appUser = emailAuthProvider.user;
+                      if (appUser != null) {
+                        final schoolName = _resolveLocationLabel(appUser);
+                        displayText = schoolName;
+                      } else {
+                        displayText = '학교';
+                      }
+                    } else {
+                      displayText = locationLabel;
+                    }
+                    
+                    // 위치 필터링이 활성화되어 있으면 반경 표시 추가
+                    if (locationProvider.isLocationFilterEnabled) {
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            displayText,
+                            style: const TextStyle(
+                              color: Colors.black87,
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.teal.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.teal.withOpacity(0.3)),
+                            ),
+                            child: Text(
+                              locationProvider.searchRadiusText,
+                              style: TextStyle(
+                                color: Colors.teal,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    } else {
+                      return Text(
+                        displayText,
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      );
+                    }
+                  },
+                ),
+                GestureDetector(
+                  onTap: () {
+                    _showLocationSelectionDialog();
+                  },
+                  child: Icon(
+                    Icons.keyboard_arrow_down,
+                    color: Colors.black87,
+                    size: 28,
                   ),
-                  Icon(Icons.keyboard_arrow_down, color: Colors.black),
-                ],
-              ),
+                ),
+              ],
             ),
           ],
         ),
         actions: [
           // 검색 아이콘
           IconButton(
-            icon: const Icon(Icons.search, color: Colors.black),
+            icon: const Icon(Icons.search, color: Colors.black87, size: 28),
+            iconSize: 28,
             onPressed: () {
               Navigator.push(
                 context,
@@ -148,31 +217,7 @@ class _HomePageState extends State<HomePage> {
           //   },
           // ),
         ],
-      ),
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            const DrawerHeader(
-              decoration: BoxDecoration(color: Colors.teal),
-              child: Text(
-                "바로 마켓 메뉴",
-                style: TextStyle(color: Colors.white, fontSize: 20),
-              ),
-            ),
-            ListTile(
-              leading: Icon(Icons.home),
-              title: Text("컨텐츠 1"),
-              onTap: () {},
-            ),
-            ListTile(
-              leading: Icon(Icons.home),
-              title: Text("컨텐츠 2"),
-              onTap: () {},
-            ),
-          ],
-        ),
-      ),
+      ) : null,
 
       // 메인 콘텐츠 영역
       body: IndexedStack(
@@ -188,21 +233,29 @@ class _HomePageState extends State<HomePage> {
               // 로그인 상태에 따른 조건부 UI 렌더링
               return !isLoggedIn
                   ? _buildLoginScreen(loginProvider, context) // 로그인되지 않은 경우
-                  : Column(
-                      children: [
-                        // 카테고리 필터 바
-                        _buildCategoryFilter(),
-                        // 메인 콘텐츠
-                        Expanded(
-                          child: _buildMainScreen(
-                            kakaoUser,
-                            loginProvider,
-                            emailUser,
-                            emailAuthProvider,
-                            context,
+                  : Container(
+                      color: Colors.grey[50],
+                      child: Column(
+                        children: [
+                          // 위치 필터링 상태 및 상품 개수 표시
+                          _buildLocationFilterInfo(),
+                          // 카테고리 필터 바
+                          _buildCategoryFilter(),
+                          // 메인 콘텐츠
+                          Expanded(
+                            child: Container(
+                              color: Colors.grey[50],
+                              child: _buildMainScreen(
+                                kakaoUser,
+                                loginProvider,
+                                emailUser,
+                                emailAuthProvider,
+                                context,
+                              ),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ); // 로그인된 경우
             },
           ), //홈
@@ -231,7 +284,7 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
 
-      floatingActionButton: isLoggedIn
+      floatingActionButton: isLoggedIn && shouldShowAppBar
           ? FloatingActionButton(
               backgroundColor: Colors.teal,
               onPressed: _toggleFabMenu,
@@ -282,6 +335,355 @@ class _HomePageState extends State<HomePage> {
         },
       ),
     );
+  }
+
+  String _resolveLocationLabel(AppUserProfile user) {
+    // 학교 이름만 표시
+    final universityName =
+        LocalAppRepository.instance.getUniversityName(user.universityId);
+    if (universityName != null && universityName.isNotEmpty) {
+      return universityName;
+    }
+    // 학교 정보가 없으면 기본값
+    return '대표 동네 미설정';
+  }
+
+  Future<bool> _handleLocationPermission() async {
+    try {
+      bool serviceEnabled;
+      LocationPermission permission;
+
+      // GPS 켜져있는지 확인
+      serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('GPS가 꺼져 있습니다. 설정에서 켜주세요.'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        final opened = await Geolocator.openLocationSettings();
+        if (!opened && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('설정을 열 수 없습니다. 수동으로 GPS를 켜주세요.'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return false;
+      }
+
+      // 권한 확인
+      permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('위치 권한이 필요합니다. 앱 설정에서 권한을 허용해주세요.'),
+                duration: Duration(seconds: 3),
+              ),
+            );
+          }
+          return false;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('위치 권한이 영구적으로 거부되었습니다. 설정에서 권한을 허용해주세요.'),
+              duration: const Duration(seconds: 4),
+              action: SnackBarAction(
+                label: '설정 열기',
+                onPressed: () async {
+                  await Geolocator.openAppSettings();
+                },
+              ),
+            ),
+          );
+        }
+        return false;
+      }
+
+      return true;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('위치 권한 확인 중 오류가 발생했습니다: ${e.toString()}'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+      return false;
+    }
+  }
+
+  void _showLocationSelectionDialog() {
+    final locationProvider = context.read<LocationProvider>();
+    final appUser = context.read<EmailAuthProvider>().user;
+    final schoolName = appUser != null ? _resolveLocationLabel(appUser) : '학교';
+    
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('위치 선택'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 필터링 해제 옵션 (필터가 활성화되어 있을 때만 표시)
+                    if (locationProvider.isLocationFilterEnabled)
+                      ListTile(
+                        leading: const Icon(Icons.location_off, color: Colors.grey),
+                        title: const Text('전체 지역 보기'),
+                        subtitle: const Text('모든 지역의 상품을 보여줍니다'),
+                        onTap: () {
+                          locationProvider.clearLocationFilter();
+                          Navigator.pop(context);
+                        },
+                      ),
+                    if (locationProvider.isLocationFilterEnabled)
+                      const Divider(),
+                    
+                    // 위치 선택 옵션
+                    if (!locationProvider.isCurrentLocationSelected)
+                      ListTile(
+                        leading: const Icon(Icons.my_location, color: Colors.teal),
+                        title: const Text('내 현재 위치'),
+                        subtitle: Text('현재 위치 주변 ${locationProvider.searchRadiusText} 내 상품을 보여줍니다'),
+                        onTap: () {
+                          Navigator.pop(context);
+                          _selectCurrentLocation();
+                        },
+                      ),
+                    if (!locationProvider.isSchoolSelected)
+                      ListTile(
+                        leading: const Icon(Icons.school, color: Colors.teal),
+                        title: Text(schoolName),
+                        subtitle: Text('학교 주변 ${locationProvider.searchRadiusText} 내 상품을 보여줍니다'),
+                        onTap: () {
+                          Navigator.pop(context);
+                          _selectSchool();
+                        },
+                      ),
+                    
+                    // 검색 반경 선택 (필터가 활성화되어 있을 때만 표시)
+                    if (locationProvider.isLocationFilterEnabled) ...[
+                      const Divider(),
+                      const Padding(
+                        padding: EdgeInsets.only(top: 8, bottom: 4),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            '검색 반경',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ),
+                      ),
+                      ...LocationProvider.searchRadiusOptions.map((radius) {
+                        final radiusText = radius >= 1000
+                            ? '${(radius / 1000).toStringAsFixed(0)}km'
+                            : '${radius.toInt()}m';
+                        return RadioListTile<double>(
+                          title: Text(radiusText),
+                          value: radius,
+                          groupValue: locationProvider.searchRadius,
+                          onChanged: (value) {
+                            if (value != null) {
+                              locationProvider.setSearchRadius(value);
+                              setState(() {});
+                            }
+                          },
+                        );
+                      }),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                  },
+                  child: const Text('확인'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _selectCurrentLocation() async {
+    final locationProvider = context.read<LocationProvider>();
+    
+    // 캐시된 위치가 있으면 즉시 사용 (즉시 UI 업데이트)
+    if (locationProvider.currentLatitude != null && 
+        locationProvider.currentLongitude != null) {
+      locationProvider.setCurrentLocation(
+        locationProvider.currentLatitude!,
+        locationProvider.currentLongitude!,
+      );
+      
+      // 화면 리로드
+      if (mounted) {
+        setState(() {});
+      }
+      
+      // 백그라운드에서 최신 위치 가져오기
+      _updateCurrentLocationInBackground();
+      return;
+    }
+
+    // 캐시된 위치가 없으면 위치 가져오기
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(20.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('현재 위치를 가져오는 중...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    try {
+      final hasPermission = await _handleLocationPermission();
+      if (!mounted) return;
+      Navigator.pop(context); // 로딩 다이얼로그 닫기
+      
+      if (!hasPermission) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('위치 권한이 필요합니다. 설정에서 권한을 허용해주세요.'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 10),
+      );
+      
+      if (!mounted) return;
+      
+      locationProvider.setCurrentLocation(
+        position.latitude,
+        position.longitude,
+      );
+      
+      // 화면 리로드
+      setState(() {});
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('현재 위치 주변 ${locationProvider.searchRadiusText} 내 상품을 표시합니다'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } on TimeoutException {
+      if (!mounted) return;
+      Navigator.pop(context); // 로딩 다이얼로그 닫기
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('위치 정보를 가져오는 데 시간이 오래 걸립니다. 네트워크 상태를 확인해주세요.'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context); // 로딩 다이얼로그 닫기
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('현재 위치를 가져올 수 없습니다: ${e.toString()}'),
+          duration: const Duration(seconds: 3),
+          action: SnackBarAction(
+            label: '다시 시도',
+            onPressed: () => _selectCurrentLocation(),
+          ),
+        ),
+      );
+    }
+  }
+
+  /// 백그라운드에서 현재 위치를 업데이트하는 메서드
+  Future<void> _updateCurrentLocationInBackground() async {
+    try {
+      final hasPermission = await _handleLocationPermission();
+      if (!hasPermission || !mounted) return;
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium, // 빠른 응답을 위해 medium 사용
+        timeLimit: const Duration(seconds: 5),
+      );
+      
+      if (!mounted) return;
+      
+      final locationProvider = context.read<LocationProvider>();
+      // 위치가 크게 변경되었을 때만 업데이트 (100m 이상)
+      if (locationProvider.currentLatitude != null && 
+          locationProvider.currentLongitude != null) {
+        final distance = Geolocator.distanceBetween(
+          locationProvider.currentLatitude!,
+          locationProvider.currentLongitude!,
+          position.latitude,
+          position.longitude,
+        );
+        
+        // 100m 이상 이동했을 때만 업데이트
+        if (distance < 100) return;
+      }
+      
+      locationProvider.setCurrentLocation(
+        position.latitude,
+        position.longitude,
+      );
+      
+      // 화면 리로드
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      // 백그라운드 업데이트 실패는 무시 (사용자 경험에 영향 없음)
+      debugPrint('백그라운드 위치 업데이트 실패: $e');
+    }
+  }
+
+  void _selectSchool() {
+    context.read<LocationProvider>().setSchoolLocation();
+    // 화면 리로드
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _toggleFabMenu() {
@@ -487,12 +889,142 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /// 위치 필터링 정보를 표시하는 위젯
+  Widget _buildLocationFilterInfo() {
+    return Consumer2<LocationProvider, EmailAuthProvider>(
+      builder: (context, locationProvider, emailAuthProvider, child) {
+        if (!locationProvider.isLocationFilterEnabled) {
+          return const SizedBox.shrink();
+        }
+
+        final viewerUid = emailAuthProvider.user?.uid;
+
+        // Firebase 사용 시 StreamBuilder로 실시간 상품 개수 계산
+        if (AppConfig.useFirebase) {
+          return StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('products')
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const SizedBox.shrink();
+              }
+
+              final products = snapshot.data!.docs.map((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                return _firestoreDocToProduct(doc.id, data, viewerUid);
+              }).toList();
+
+              var filteredCount = products.length;
+              if (locationProvider.filterLatitude != null &&
+                  locationProvider.filterLongitude != null) {
+                filteredCount = products.where((product) {
+                  if (product.x == 0.0 && product.y == 0.0) {
+                    return false;
+                  }
+                  final distance = Geolocator.distanceBetween(
+                    locationProvider.filterLatitude!,
+                    locationProvider.filterLongitude!,
+                    product.x,
+                    product.y,
+                  );
+                  return distance <= locationProvider.searchRadius;
+                }).length;
+              }
+
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                color: Colors.teal.withOpacity(0.05),
+                child: Row(
+                  children: [
+                    Icon(
+                      locationProvider.isCurrentLocationSelected
+                          ? Icons.my_location
+                          : Icons.school,
+                      size: 16,
+                      color: Colors.teal,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '주변 상품 $filteredCount개',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.teal[700],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        }
+
+        // 로컬 모드
+        final products = LocalAppRepository.instance
+            .getProducts(viewerUid: viewerUid)
+            .toList();
+        
+        var filteredCount = products.length;
+        if (locationProvider.filterLatitude != null &&
+            locationProvider.filterLongitude != null) {
+          filteredCount = products.where((product) {
+            if (product.x == 0.0 && product.y == 0.0) {
+              return false;
+            }
+            final distance = Geolocator.distanceBetween(
+              locationProvider.filterLatitude!,
+              locationProvider.filterLongitude!,
+              product.x,
+              product.y,
+            );
+            return distance <= locationProvider.searchRadius;
+          }).length;
+        }
+
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          color: Colors.teal.withOpacity(0.05),
+          child: Row(
+            children: [
+              Icon(
+                locationProvider.isCurrentLocationSelected
+                    ? Icons.my_location
+                    : Icons.school,
+                size: 16,
+                color: Colors.teal,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '주변 상품 $filteredCount개',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.teal[700],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   /// 카테고리 필터 바를 생성하는 위젯
   Widget _buildCategoryFilter() {
     return Container(
-      height: 50,
-      color: Colors.white,
+      height: 40,
       padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          bottom: BorderSide(color: Colors.grey[200]!, width: 1),
+        ),
+      ),
       child: ListView(
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(), // 스크롤 활성화
@@ -536,9 +1068,11 @@ class _HomePageState extends State<HomePage> {
         textColor = Colors.white;
       }
     } else {
-      backgroundColor = isSelected ? Colors.white : Colors.grey[800];
-      textColor = isSelected ? Colors.black87 : Colors.white;
+      backgroundColor = isSelected ? Colors.teal : Colors.grey[100];
+      textColor = isSelected ? Colors.white : Colors.black87;
       if (isSelected) {
+        borderStyle = Border.all(color: Colors.teal, width: 1.5);
+      } else {
         borderStyle = Border.all(color: Colors.grey[300]!, width: 1);
       }
     }
@@ -619,10 +1153,87 @@ class _HomePageState extends State<HomePage> {
     return mergedList;
   }
 
-  /// 상품 목록을 생성하는 위젯 (임시 데이터)
-  /// 상품 인시 데이터 넣는 부분
+  /// Firestore 문서를 Product로 변환
+  Product _firestoreDocToProduct(String docId, Map<String, dynamic> data, String? viewerUid) {
+    final location = data['location'] as GeoPoint?;
+    final region = data['region'] as Map<String, dynamic>?;
+    final createdAt = data['createdAt'] as Timestamp?;
+    final updatedAt = data['updatedAt'] as Timestamp?;
+    final likedUserIds = List<String>.from(data['likedUserIds'] ?? []);
+    
+    return Product(
+      id: docId,
+      title: data['title'] as String? ?? '',
+      description: data['description'] as String? ?? '',
+      price: (data['price'] as int?) ?? 0,
+      imageUrls: List<String>.from(data['images'] ?? []),
+      category: ProductCategory.values[data['category'] as int? ?? 0],
+      status: ProductStatus.values[data['status'] as int? ?? 0],
+      sellerId: data['sellerUid'] as String? ?? '',
+      sellerNickname: data['sellerName'] as String? ?? '',
+      sellerProfileImageUrl: data['sellerPhotoUrl'] as String?,
+      location: region?['name'] as String? ?? '알 수 없는 지역',
+      createdAt: createdAt?.toDate() ?? DateTime.now(),
+      updatedAt: updatedAt?.toDate() ?? DateTime.now(),
+      viewCount: data['viewCount'] as int? ?? 0,
+      likeCount: data['likeCount'] as int? ?? 0,
+      isLiked: viewerUid != null && likedUserIds.contains(viewerUid),
+      x: location?.latitude ?? 0.0,
+      y: location?.longitude ?? 0.0,
+    );
+  }
+
+  /// 상품 목록을 생성하는 위젯
   Widget _buildProductList() {
-    final allProducts = getMockProducts().map((product) {
+    final viewerUid = context.read<EmailAuthProvider>().user?.uid;
+    
+    // LocationProvider 변경 감지를 위해 Consumer로 감싸기
+    return Consumer<LocationProvider>(
+      builder: (context, locationProvider, child) {
+        // Firebase 사용 시 StreamBuilder로 실시간 업데이트
+        if (AppConfig.useFirebase) {
+          return StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('products')
+                .orderBy('createdAt', descending: true)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              
+              if (snapshot.hasError) {
+                return Center(child: Text('오류: ${snapshot.error}'));
+              }
+              
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return const Center(
+                  child: Text('등록된 상품이 없습니다.'),
+                );
+              }
+              
+              final products = snapshot.data!.docs.map((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                return _firestoreDocToProduct(doc.id, data, viewerUid);
+              }).toList();
+              
+              return _buildProductGridView(products);
+            },
+          );
+        }
+        
+        // 로컬 모드
+        final products = LocalAppRepository.instance
+            .getProducts(viewerUid: viewerUid)
+            .toList();
+        return _buildProductGridView(products);
+      },
+    );
+  }
+  
+  /// Product 리스트를 GridView로 표시
+  Widget _buildProductGridView(List<Product> products) {
+    var allProducts = products.map((product) {
       return {
         'title': product.title,
         'price': product.formattedPrice,
@@ -633,6 +1244,27 @@ class _HomePageState extends State<HomePage> {
       };
     }).toList();
 
+    // 위치 필터링 적용 (현재 위치 또는 학교 주변)
+    final locationProvider = context.read<LocationProvider>();
+    if (locationProvider.isLocationFilterEnabled &&
+        locationProvider.filterLatitude != null &&
+        locationProvider.filterLongitude != null) {
+      allProducts = allProducts.where((productMap) {
+        final product = productMap['product'] as Product;
+        // Product의 x, y가 유효한 경우에만 거리 계산
+        if (product.x == 0.0 && product.y == 0.0) {
+          return false; // 위치 정보가 없는 상품은 제외
+        }
+        final distance = Geolocator.distanceBetween(
+          locationProvider.filterLatitude!,
+          locationProvider.filterLongitude!,
+          product.x,
+          product.y,
+        );
+        return distance <= locationProvider.searchRadius;
+      }).toList();
+    }
+
     // 선택된 카테고리에 따라 필터링
     final filteredProducts = _selectedCategory == null
         ? allProducts
@@ -642,12 +1274,48 @@ class _HomePageState extends State<HomePage> {
 
     // 필터링된 상품이 없을 때
     if (filteredProducts.isEmpty) {
-      return const Center(
+      final locationProvider = context.read<LocationProvider>();
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(32.0),
-          child: Text(
-            '해당 카테고리의 상품이 없습니다',
-            style: TextStyle(fontSize: 16, color: Colors.grey),
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                _selectedCategory == null
+                    ? (locationProvider.isLocationFilterEnabled
+                        ? Icons.location_off
+                        : Icons.inbox_outlined)
+                    : Icons.category_outlined,
+                size: 64,
+                color: Colors.grey[400],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                _selectedCategory == null
+                    ? (locationProvider.isLocationFilterEnabled
+                        ? '주변에 상품이 없습니다'
+                        : '상품이 없습니다')
+                    : '해당 카테고리의 상품이 없습니다',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              if (locationProvider.isLocationFilterEnabled && _selectedCategory == null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '검색 반경을 늘리거나 필터를 해제해보세요',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey[500],
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ],
           ),
         ),
       );
@@ -676,7 +1344,7 @@ class _HomePageState extends State<HomePage> {
             // Map<String, dynamic> 형태의 상품 데이터
             final product = item as Map<String, dynamic>;
             final productModel = product['product'] as Product?;
-            return GestureDetector(
+            return InkWell(
               onTap: () {
                 if (productModel == null) return;
                 Navigator.push(
@@ -687,13 +1355,23 @@ class _HomePageState extends State<HomePage> {
                   ),
                 );
               },
+              borderRadius: BorderRadius.circular(12),
+              splashColor: Colors.teal.withOpacity(0.1),
+              highlightColor: Colors.teal.withOpacity(0.05),
               child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey[200]!),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey[200]!, width: 1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.03),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
                 child: Row(
                   children: [

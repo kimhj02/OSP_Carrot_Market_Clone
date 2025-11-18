@@ -9,14 +9,17 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_sandbox/config/app_config.dart';
 
 /// 관리자 인증 서비스 클래스
 class AdminService {
-  /// Firestore 인스턴스
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  /// Firestore 인스턴스 (Firebase 모드에서만 초기화)
+  final FirebaseFirestore? _firestore =
+      AppConfig.useFirebase ? FirebaseFirestore.instance : null;
 
-  /// Firebase Auth 인스턴스
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  /// Firebase Auth 인스턴스 (Firebase 모드에서만 초기화)
+  final FirebaseAuth? _auth =
+      AppConfig.useFirebase ? FirebaseAuth.instance : null;
 
   /// 현재 로그인한 사용자가 관리자인지 확인하는 메서드
   ///
@@ -24,13 +27,16 @@ class AdminService {
   ///   - true: 관리자 권한이 있는 경우
   ///   - false: 관리자 권한이 없거나 로그인하지 않은 경우
   Future<bool> isAdmin() async {
+    if (!AppConfig.useFirebase) {
+      return false;
+    }
     try {
-      final user = _auth.currentUser;
+      final user = _auth?.currentUser;
       if (user == null || user.email == null) {
         return false;
       }
 
-      final adminDoc = await _firestore
+      final adminDoc = await _firestore!
           .collection('admins')
           .doc(user.email)
           .get();
@@ -51,12 +57,15 @@ class AdminService {
   ///   - true: 관리자 권한이 있는 경우r
   ///   - false: 관리자 권한이 없거나 이메일이 없는 경우
   Future<bool> isAdminByEmail(String email) async {
+    if (!AppConfig.useFirebase) {
+      return false;
+    }
     try {
       if (email.isEmpty) {
         return false;
       }
 
-      final adminDoc = await _firestore
+      final adminDoc = await _firestore!
           .collection('admins')
           .doc(email)
           .get();
@@ -73,8 +82,11 @@ class AdminService {
   /// Returns:
   ///   - 관리자 이메일 목록
   Future<List<String>> getAdminEmails() async {
+    if (!AppConfig.useFirebase) {
+      return [];
+    }
     try {
-      final adminSnapshot = await _firestore.collection('admins').get();
+      final adminSnapshot = await _firestore!.collection('admins').get();
       return adminSnapshot.docs.map((doc) => doc.id).toList();
     } catch (e) {
       print('관리자 목록 조회 중 오류 발생: $e');

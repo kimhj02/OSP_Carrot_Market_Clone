@@ -1,0 +1,27 @@
+# Compiled JavaScript files (빌드된 파일만 제외)
+# 소스 파일은 포함: index.js, .eslintrc.js 등
+# *.js
+# *.js.map
+
+# Node.js dependencies
+node_modules/
+
+# Firebase cache
+.firebase/
+
+# Firebase config
+.firebaserc
+firebase.json
+
+# Environment variables
+.env
+.env.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+

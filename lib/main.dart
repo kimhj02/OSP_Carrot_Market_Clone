@@ -11,16 +11,24 @@
 /// @since 2024-01-01
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_auth/firebase_auth.dart' hide EmailAuthProvider;
 import 'package:provider/provider.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:flutter_sandbox/config/app_config.dart';
 import 'package:flutter_sandbox/firebase_options.dart';
+import 'package:flutter_sandbox/models/firestore_schema.dart';
 import 'package:flutter_sandbox/providers/kakao_login_provider.dart';
 import 'package:flutter_sandbox/providers/email_auth_provider.dart';
 import 'package:flutter_sandbox/providers/ad_provider.dart';
+import 'package:flutter_sandbox/providers/location_provider.dart';
 import 'package:flutter_sandbox/pages/home_page.dart';
 import 'package:flutter_sandbox/pages/verify_email_page.dart';
 import 'package:flutter_sandbox/pages/email_auth_page.dart';
+import 'package:flutter_sandbox/services/local_app_repository.dart';
+import 'package:flutter_sandbox/services/fcm_service.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+
 /// 앱의 메인 진입점
 ///
 /// Flutter 앱이 시작될 때 가장 먼저 실행되는 함수입니다.
@@ -28,26 +36,33 @@ import 'package:flutter_sandbox/pages/email_auth_page.dart';
 ///
 // Firebase 기능 사용 여부 플래그 (false면 Firebase 비활성화)
 
-//const bool kUseFirebase = false;
-
-const bool kUseFirebase = true; //Firebase 활성화시 주석 제거
-
 Future<void> main() async {
   // Flutter 바인딩을 초기화합니다.
   // 이는 Flutter 엔진과의 통신을 위한 필수 단계입니다.
   WidgetsFlutterBinding.ensureInitialized();
+  await initializeDateFormatting('ko_KR', null);
 
   // Firebase 초기화 (비활성화 시 건너뜀)
-  if (kUseFirebase) {
+  if (AppConfig.useFirebase) {
     try {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
       );
       print('✅ Firebase 초기화 성공');
+      
+      // FCM 백그라운드 핸들러 등록
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+      
+      // FCM 서비스 초기화
+      await FCMService().initialize();
+      print('✅ FCM 초기화 성공');
     } catch (e) {
       // 초기화 실패 시에도 앱이 구동되도록 경고만 출력
       print('⚠️ Firebase 초기화 실패: $e');
     }
+  } else {
+    // 로컬 저장소를 미리 초기화하여 mock 데이터 사용
+    LocalAppRepository.instance;
   }
 
   // 앱을 실행합니다.
@@ -58,6 +73,7 @@ Future<void> main() async {
         ChangeNotifierProvider(create: (context) => KakaoLoginProvider()),
         ChangeNotifierProvider(create: (context) => EmailAuthProvider()),
         ChangeNotifierProvider(create: (context) => AdProvider()),
+        ChangeNotifierProvider(create: (context) => LocationProvider()),
       ],
       child: const MyApp(),
     ),
@@ -75,6 +91,16 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: '금오 마켓', // 앱 제목
+      locale: const Locale('ko', 'KR'),
+      supportedLocales: const [
+        Locale('ko', 'KR'),
+        Locale('en', 'US'),
+      ],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ],
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
         useMaterial3: true,
@@ -90,7 +116,7 @@ class AuthCheck extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
 
-    final User? user = context.watch<EmailAuthProvider>().user;
+    final AppUserProfile? user = context.watch<EmailAuthProvider>().user;
 
     /// 로그아웃 상태
     if (user == null) {

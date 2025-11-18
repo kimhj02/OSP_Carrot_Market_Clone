@@ -14,8 +14,15 @@
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:flutter_sandbox/config/app_config.dart';
+import 'package:flutter_sandbox/providers/email_auth_provider.dart';
+import 'package:flutter_sandbox/providers/location_provider.dart';
+import 'package:flutter_sandbox/services/local_app_repository.dart';
+import 'package:flutter_sandbox/services/fcm_service.dart';
+import 'package:flutter_sandbox/models/firestore_schema.dart';
 
 /// Firestore 컬렉션 및 필드 상수
 class ChatConstants {
@@ -75,12 +82,32 @@ class _ChatPageState extends State<ChatPage> {
 
   bool _isSending = false;
   String? _currentUserId;
+  DateTime? _lastMarkAsReadTime; // 마지막 읽음 처리 시간
+  bool _hasMarkedAsRead = false; // 읽음 처리 여부 플래그
 
   @override
   void initState() {
     super.initState();
-    _initializeUser();
-    _markMessagesAsRead();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final uid = context.watch<EmailAuthProvider>().user?.uid;
+    if (uid != _currentUserId) {
+      setState(() {
+        _currentUserId = uid;
+        _hasMarkedAsRead = false; // 사용자 변경 시 플래그 리셋
+      });
+    }
+    
+    // 채팅 페이지에 처음 들어왔을 때 읽음 처리
+    if (_currentUserId != null && !_hasMarkedAsRead) {
+      _hasMarkedAsRead = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _markMessagesAsRead();
+      });
+    }
   }
 
   @override
@@ -90,47 +117,166 @@ class _ChatPageState extends State<ChatPage> {
     super.dispose();
   }
 
-  /// 현재 사용자 초기화
-  void _initializeUser() {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      setState(() {
-        _currentUserId = user.uid;
-      });
-    }
-  }
-
   /// 메시지를 읽음으로 표시
   Future<void> _markMessagesAsRead() async {
     if (_currentUserId == null) return;
 
+    // 중복 호출 방지: 1초 이내에 다시 호출되면 무시
+    final now = DateTime.now();
+    if (_lastMarkAsReadTime != null &&
+        now.difference(_lastMarkAsReadTime!).inSeconds < 1) {
+      return;
+    }
+    _lastMarkAsReadTime = now;
+
+    if (AppConfig.useFirebase) {
+      try {
+        debugPrint('📖 읽음 처리 시작: chatRoomId=${widget.chatRoomId}, userId=$_currentUserId');
+
+        // 읽지 않은 메시지 찾기 (인덱스 오류 방지를 위해 senderId 조건만 사용)
+        final messagesSnapshot = await FirebaseFirestore.instance
+            .collection(ChatConstants.chatRoomsCollection)
+            .doc(widget.chatRoomId)
+            .collection(ChatConstants.messagesCollection)
+            .where('senderId', isNotEqualTo: _currentUserId)
+            .get();
+
+        // 클라이언트 측에서 읽지 않은 메시지만 필터링
+        final unreadMessages = messagesSnapshot.docs.where((doc) {
+          final data = doc.data();
+          return (data['isRead'] as bool?) != true;
+        }).toList();
+
+        debugPrint('📖 읽지 않은 메시지 수: ${unreadMessages.length}');
+
+        final batch = FirebaseFirestore.instance.batch();
+
+        // 읽지 않은 메시지를 읽음으로 표시
+        for (var doc in unreadMessages) {
+          batch.update(doc.reference, {'isRead': true});
+        }
+
+        if (unreadMessages.isNotEmpty) {
+          await batch.commit();
+          debugPrint('✅ 메시지 읽음 처리 완료: ${unreadMessages.length}개');
+        }
+
+        // unreadCount를 0으로 업데이트 (중첩 필드 업데이트)
+        final chatRoomRef = FirebaseFirestore.instance
+            .collection(ChatConstants.chatRoomsCollection)
+            .doc(widget.chatRoomId);
+        
+        // 현재 unreadCount Map 가져오기
+        final chatRoomDoc = await chatRoomRef.get();
+        if (chatRoomDoc.exists) {
+          final currentUnreadCount = chatRoomDoc.data()?['unreadCount'] as Map<String, dynamic>? ?? {};
+          final updatedUnreadCount = Map<String, dynamic>.from(currentUnreadCount);
+          updatedUnreadCount[_currentUserId!] = 0;
+          
+          await chatRoomRef.update({
+            'unreadCount': updatedUnreadCount,
+          });
+          
+          debugPrint('✅ unreadCount 업데이트 완료: ${_currentUserId} -> 0');
+        }
+      } catch (e, stackTrace) {
+        debugPrint('❌ 메시지 읽음 처리 실패: $e');
+        debugPrint('❌ StackTrace: $stackTrace');
+      }
+    } else {
+      await LocalAppRepository.instance.markMessagesAsRead(
+        roomId: widget.chatRoomId,
+        userId: _currentUserId!,
+      );
+    }
+  }
+
+  /// 위치 정보 메시지 전송
+  Future<void> _sendLocationMessage() async {
+    if (_isSending || _currentUserId == null) return;
+
     try {
-      final messagesSnapshot = await FirebaseFirestore.instance
-          .collection(ChatConstants.chatRoomsCollection)
-          .doc(widget.chatRoomId)
-          .collection(ChatConstants.messagesCollection)
-          .where('senderId', isNotEqualTo: _currentUserId)
-          .where('isRead', isEqualTo: false)
-          .get();
+      setState(() => _isSending = true);
 
-      final batch = FirebaseFirestore.instance.batch();
-
-      for (var doc in messagesSnapshot.docs) {
-        batch.update(doc.reference, {'isRead': true});
+      final locationProvider = context.read<LocationProvider>();
+      String locationMessage = '위치 정보를 공유합니다';
+      
+      if (locationProvider.isLocationFilterEnabled &&
+          locationProvider.filterLatitude != null &&
+          locationProvider.filterLongitude != null) {
+        final latitude = locationProvider.filterLatitude!;
+        final longitude = locationProvider.filterLongitude!;
+        locationMessage = '위치: 위도 $latitude, 경도 $longitude\n지도에서 확인하기: https://www.google.com/maps?q=$latitude,$longitude';
+      } else {
+        // 현재 위치 가져오기
+        final hasPermission = await _checkLocationPermission();
+        if (hasPermission) {
+          try {
+            final position = await Geolocator.getCurrentPosition(
+              desiredAccuracy: LocationAccuracy.high,
+            );
+            locationMessage = '위치: 위도 ${position.latitude}, 경도 ${position.longitude}\n지도에서 확인하기: https://www.google.com/maps?q=${position.latitude},${position.longitude}';
+          } catch (e) {
+            _showSnackBar('위치 정보를 가져올 수 없습니다');
+            return;
+          }
+        } else {
+          _showSnackBar('위치 권한이 필요합니다');
+          return;
+        }
       }
 
-      await batch.commit();
+      if (AppConfig.useFirebase) {
+        await FirebaseFirestore.instance
+            .collection(ChatConstants.chatRoomsCollection)
+            .doc(widget.chatRoomId)
+            .collection(ChatConstants.messagesCollection)
+            .add({
+          'senderId': _currentUserId,
+          'text': locationMessage,
+          'createdAt': FieldValue.serverTimestamp(),
+          'isRead': false,
+        });
+      } else {
+        await LocalAppRepository.instance.sendMessage(
+          roomId: widget.chatRoomId,
+          text: locationMessage,
+          senderUid: _currentUserId!,
+        );
+      }
 
-      /// 읽지 않은 메시지 카운트 초기화
-      await FirebaseFirestore.instance
-          .collection(ChatConstants.chatRoomsCollection)
-          .doc(widget.chatRoomId)
-          .update({
-        '${ChatConstants.unreadCount}.$_currentUserId': 0,
-      });
+      _messageController.clear();
+      _scrollToBottom();
     } catch (e) {
-      debugPrint('메시지 읽음 처리 실패: $e');
+      debugPrint('위치 메시지 전송 실패: $e');
+      _showSnackBar('위치 정보 전송에 실패했습니다');
+    } finally {
+      if (mounted) {
+        setState(() => _isSending = false);
+      }
     }
+  }
+
+  /// 위치 권한 확인
+  Future<bool> _checkLocationPermission() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      return false;
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        return false;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      return false;
+    }
+
+    return true;
   }
 
   /// 메시지 전송
@@ -144,45 +290,68 @@ class _ChatPageState extends State<ChatPage> {
     setState(() => _isSending = true);
 
     try {
-      /// 채팅방 정보 가져오기
-      final chatRoomDoc = await FirebaseFirestore.instance
-          .collection(ChatConstants.chatRoomsCollection)
-          .doc(widget.chatRoomId)
-          .get();
+      if (AppConfig.useFirebase) {
+        final chatRoomDoc = await FirebaseFirestore.instance
+            .collection(ChatConstants.chatRoomsCollection)
+            .doc(widget.chatRoomId)
+            .get();
 
-      if (!chatRoomDoc.exists) {
-        throw Exception('채팅방을 찾을 수 없습니다');
+        if (!chatRoomDoc.exists) {
+          throw Exception('채팅방을 찾을 수 없습니다');
+        }
+
+        final participants = List<String>.from(
+            chatRoomDoc.data()?['participants'] ?? []
+        );
+        
+        // 받는 사람 목록 (본인 제외)
+        final recipientIds = participants.where((id) => id != _currentUserId).toList();
+
+        await FirebaseFirestore.instance
+            .collection(ChatConstants.chatRoomsCollection)
+            .doc(widget.chatRoomId)
+            .collection(ChatConstants.messagesCollection)
+            .add({
+          'senderId': _currentUserId,
+          'text': message,
+          'createdAt': FieldValue.serverTimestamp(),
+          'isRead': false,
+        });
+
+        // 읽지 않은 메시지 수 업데이트 (모든 참여자에게)
+        final unreadCountUpdates = <String, dynamic>{};
+        for (final recipientId in recipientIds) {
+          unreadCountUpdates['${ChatConstants.unreadCount}.$recipientId'] = FieldValue.increment(1);
+        }
+
+        await FirebaseFirestore.instance
+            .collection(ChatConstants.chatRoomsCollection)
+            .doc(widget.chatRoomId)
+            .update({
+          ChatConstants.lastMessage: message,
+          ChatConstants.lastMessageTime: FieldValue.serverTimestamp(),
+          ...unreadCountUpdates,
+        });
+
+        // 알림 전송 (모든 참여자에게)
+        final senderName = context.read<EmailAuthProvider>().user?.displayName ?? '알 수 없음';
+        for (final recipientId in recipientIds) {
+          if (recipientId.isNotEmpty) {
+            await FCMService().sendChatNotification(
+              recipientUid: recipientId,
+              senderName: senderName,
+              message: message,
+              chatRoomId: widget.chatRoomId,
+            );
+          }
+        }
+      } else {
+        await LocalAppRepository.instance.sendMessage(
+          roomId: widget.chatRoomId,
+          senderUid: _currentUserId!,
+          text: message,
+        );
       }
-
-      final participants = List<String>.from(
-          chatRoomDoc.data()?['participants'] ?? []
-      );
-      final recipientId = participants.firstWhere(
-            (id) => id != _currentUserId,
-        orElse: () => '',
-      );
-
-      /// 메시지 추가 입력
-      await FirebaseFirestore.instance
-          .collection(ChatConstants.chatRoomsCollection)
-          .doc(widget.chatRoomId)
-          .collection(ChatConstants.messagesCollection)
-          .add({
-        'senderId': _currentUserId,
-        'text': message,
-        'createdAt': FieldValue.serverTimestamp(),
-        'isRead': false,
-      });
-
-      /// 채팅방 정보 업데이트
-      await FirebaseFirestore.instance
-          .collection(ChatConstants.chatRoomsCollection)
-          .doc(widget.chatRoomId)
-          .update({
-        ChatConstants.lastMessage: message,
-        ChatConstants.lastMessageTime: FieldValue.serverTimestamp(),
-        '${ChatConstants.unreadCount}.$recipientId': FieldValue.increment(1),
-      });
 
       /// 입력창 초기화
       _messageController.clear();
@@ -245,19 +414,77 @@ class _ChatPageState extends State<ChatPage> {
           icon: const Icon(Icons.arrow_back, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(
-          widget.opponentName,
-          style: const TextStyle(
-            color: Colors.black,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
+        title: StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection(ChatConstants.chatRoomsCollection)
+              .doc(widget.chatRoomId)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return Text(
+                widget.opponentName,
+                style: const TextStyle(
+                  color: Colors.black,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              );
+            }
+            
+            final data = snapshot.data!.data() as Map<String, dynamic>?;
+            final chatRoomType = data?['type'] ?? 'purchase';
+            final isGroupChat = chatRoomType == 'groupBuy';
+            
+            if (isGroupChat) {
+              // 그룹 채팅: 상품 제목 표시
+              final productTitle = data?['productTitle'] as String? ?? '같이사요 채팅';
+              final participants = List<String>.from(data?['participants'] ?? []);
+              final otherParticipants = participants
+                  .where((id) => id != _currentUserId)
+                  .length;
+              
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    productTitle,
+                    style: const TextStyle(
+                      color: Colors.black,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (otherParticipants > 0)
+                    Text(
+                      '${otherParticipants}명 참여',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 12,
+                      ),
+                    ),
+                ],
+              );
+            } else {
+              // 1:1 채팅: 기존대로 상대방 이름 표시
+              return Text(
+                widget.opponentName,
+                style: const TextStyle(
+                  color: Colors.black,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              );
+            }
+          },
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.more_vert, color: Colors.black),
             onPressed: () {
-              /// 더보기 메뉴 (향후 구현)
+              // 더보기 메뉴 (필요 시 구현)
             },
           ),
         ],
@@ -273,6 +500,7 @@ class _ChatPageState extends State<ChatPage> {
           _ChatInput(
             controller: _messageController,
             onSend: _sendMessage,
+            onSendLocation: _sendLocationMessage,
             isSending: _isSending,
           ),
         ],
@@ -282,84 +510,161 @@ class _ChatPageState extends State<ChatPage> {
 
   /// 메시지 목록 위젯
   Widget _buildMessageList() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection(ChatConstants.chatRoomsCollection)
-          .doc(widget.chatRoomId)
-          .collection(ChatConstants.messagesCollection)
-          .orderBy('createdAt', descending: false)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return Center(
-            child: Text('오류가 발생했습니다: ${snapshot.error}'),
+    if (AppConfig.useFirebase) {
+      return StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection(ChatConstants.chatRoomsCollection)
+            .doc(widget.chatRoomId)
+            .collection(ChatConstants.messagesCollection)
+            .orderBy('createdAt', descending: false)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(
+              child: Text('오류가 발생했습니다: ${snapshot.error}'),
+            );
+          }
+
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
+          }
+
+          final messages = snapshot.data?.docs
+                  .map((doc) => ChatMessage.fromFirestore(doc))
+                  .toList() ??
+              [];
+          
+          // 읽지 않은 메시지가 있는지 확인하고 읽음 처리
+          final hasUnreadMessages = messages.any((msg) => 
+            msg.senderId != _currentUserId && !msg.isRead
+          );
+          
+          if (hasUnreadMessages && _currentUserId != null) {
+            // 읽지 않은 메시지가 있으면 읽음 처리
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _markMessagesAsRead();
+            });
+          }
+          
+          return _buildMessageListView(messages);
+        },
+      );
+    } else {
+      return StreamBuilder<List<AppChatMessage>>(
+        stream: LocalAppRepository.instance.watchMessages(widget.chatRoomId),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(
+              child: Text('오류가 발생했습니다: ${snapshot.error}'),
+            );
+          }
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final messages =
+              snapshot.data?.map(_convertLocalMessage).toList() ?? [];
+          
+          // 읽지 않은 메시지가 있는지 확인하고 읽음 처리
+          final hasUnreadMessages = messages.any((msg) => 
+            msg.senderId != _currentUserId && !msg.isRead
+          );
+          
+          if (hasUnreadMessages && _currentUserId != null) {
+            // 읽지 않은 메시지가 있으면 읽음 처리
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _markMessagesAsRead();
+            });
+          }
+          
+          return _buildMessageListView(messages);
+        },
+      );
+    }
+  }
+
+  Widget _buildMessageListView(List<ChatMessage> messages) {
+    if (messages.isEmpty) {
+      return const Center(
+        child: Text(
+          '메시지가 없습니다\n첫 메시지를 보내보세요!',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.grey,
+            fontSize: 16,
+          ),
+        ),
+      );
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToBottom();
+    });
+
+    return ListView.builder(
+      controller: _scrollController,
+      padding: const EdgeInsets.all(16),
+      itemCount: messages.length,
+      itemBuilder: (context, index) {
+        final message = messages[index];
+        final isMine = message.senderId == _currentUserId;
+
+        bool showDateDivider = false;
+        if (index == 0) {
+          showDateDivider = true;
+        } else {
+          final prevMessage = messages[index - 1];
+          showDateDivider = !_isSameDay(
+            prevMessage.createdAt,
+            message.createdAt,
           );
         }
 
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(),
-          );
-        }
-
-        final messages = snapshot.data?.docs
-            .map((doc) => ChatMessage.fromFirestore(doc))
-            .toList() ?? [];
-
-        if (messages.isEmpty) {
-          return const Center(
-            child: Text(
-              '메시지가 없습니다\n첫 메시지를 보내보세요!',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.grey,
-                fontSize: 16,
-              ),
-            ),
-          );
-        }
-
-        /// 새 메시지가 추가되면 스크롤
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _scrollToBottom();
-        });
-
-        return ListView.builder(
-          controller: _scrollController,
-          padding: const EdgeInsets.all(16),
-          itemCount: messages.length,
-          itemBuilder: (context, index) {
-            final message = messages[index];
-            final isMine = message.senderId == _currentUserId;
-
-            /// 날짜 구분선 표시 여부 확인
-            bool showDateDivider = false;
-            if (index == 0) {
-              showDateDivider = true;
-            } else {
-              final prevMessage = messages[index - 1];
-              showDateDivider = !_isSameDay(
-                prevMessage.createdAt,
-                message.createdAt,
-              );
-            }
-
-            return Column(
-              children: [
-                if (showDateDivider)
-                  _DateDivider(date: message.createdAt),
-
-                _MessageBubble(
+        return Column(
+          children: [
+            if (showDateDivider) _DateDivider(date: message.createdAt),
+            StreamBuilder<DocumentSnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection(ChatConstants.chatRoomsCollection)
+                  .doc(widget.chatRoomId)
+                  .snapshots(),
+              builder: (context, roomSnapshot) {
+                if (!roomSnapshot.hasData) {
+                  return _MessageBubble(
+                    message: message,
+                    isMine: isMine,
+                  );
+                }
+                
+                final data = roomSnapshot.data!.data() as Map<String, dynamic>?;
+                final isGroupChat = data?['type'] == 'groupBuy';
+                final participantNames = data?['participantNames'] != null
+                    ? Map<String, String>.from(data!['participantNames'] as Map)
+                    : <String, String>{};
+                
+                return _MessageBubble(
                   message: message,
                   isMine: isMine,
-                ),
-
-                const SizedBox(height: 8),
-              ],
-            );
-          },
+                  isGroupChat: isGroupChat,
+                  participantNames: participantNames,
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
         );
       },
+    );
+  }
+
+  ChatMessage _convertLocalMessage(AppChatMessage message) {
+    return ChatMessage(
+      id: message.id,
+      senderId: message.senderUid,
+      text: message.text,
+      createdAt: message.sentAt,
+      isRead: message.readBy.contains(_currentUserId),
     );
   }
 
@@ -418,70 +723,95 @@ class _DateDivider extends StatelessWidget {
 class _MessageBubble extends StatelessWidget {
   final ChatMessage message;
   final bool isMine;
+  final bool isGroupChat;
+  final Map<String, String> participantNames;
 
   const _MessageBubble({
     required this.message,
     required this.isMine,
+    this.isGroupChat = false,
+    this.participantNames = const {},
   });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment:
-      isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
-      crossAxisAlignment: CrossAxisAlignment.end,
+    final senderName = participantNames[message.senderId] ?? '알 수 없음';
+    
+    return Column(
+      crossAxisAlignment: isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
-        if (isMine) ...[
-          /// 내 메시지: 시간 표시
+        // 그룹 채팅이고 내 메시지가 아닐 때 발신자 이름 표시
+        if (isGroupChat && !isMine) ...[
           Padding(
-            padding: const EdgeInsets.only(right: 8),
+            padding: const EdgeInsets.only(left: 8, bottom: 4),
             child: Text(
-              DateFormat('HH:mm').format(message.createdAt),
+              senderName,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 12,
                 color: Colors.grey[600],
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
         ],
+        Row(
+          mainAxisAlignment:
+          isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            if (isMine) ...[
+              /// 내 메시지: 시간 표시
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Text(
+                  DateFormat('HH:mm').format(message.createdAt),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ),
+            ],
 
-        /// 메시지 말풍선
-        Flexible(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: isMine ? Colors.teal : Colors.grey[200],
-              borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(18),
-                topRight: const Radius.circular(18),
-                bottomLeft: Radius.circular(isMine ? 18 : 4),
-                bottomRight: Radius.circular(isMine ? 4 : 18),
+            /// 메시지 말풍선
+            Flexible(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isMine ? Colors.teal : Colors.grey[200],
+                  borderRadius: BorderRadius.only(
+                    topLeft: const Radius.circular(18),
+                    topRight: const Radius.circular(18),
+                    bottomLeft: Radius.circular(isMine ? 18 : 4),
+                    bottomRight: Radius.circular(isMine ? 4 : 18),
+                  ),
+                ),
+                child: Text(
+                  message.text,
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: isMine ? Colors.white : Colors.black87,
+                    height: 1.4,
+                  ),
+                ),
               ),
             ),
-            child: Text(
-              message.text,
-              style: TextStyle(
-                fontSize: 15,
-                color: isMine ? Colors.white : Colors.black87,
-                height: 1.4,
+
+            if (!isMine) ...[
+              /// 상대방 메시지 시간 표시
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Text(
+                  DateFormat('HH:mm').format(message.createdAt),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey[600],
+                  ),
+                ),
               ),
-            ),
-          ),
+            ],
+          ],
         ),
-
-        if (!isMine) ...[
-          /// 상대방 메시지 시간 표시
-          Padding(
-            padding: const EdgeInsets.only(left: 8),
-            child: Text(
-              DateFormat('HH:mm').format(message.createdAt),
-              style: TextStyle(
-                fontSize: 11,
-                color: Colors.grey[600],
-              ),
-            ),
-          ),
-        ],
       ],
     );
   }
@@ -491,11 +821,13 @@ class _MessageBubble extends StatelessWidget {
 class _ChatInput extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback onSend;
+  final VoidCallback onSendLocation;
   final bool isSending;
 
   const _ChatInput({
     required this.controller,
     required this.onSend,
+    required this.onSendLocation,
     required this.isSending,
   });
 
@@ -513,6 +845,12 @@ class _ChatInput extends StatelessWidget {
         ),
         child: Row(
           children: [
+            /// 위치 공유 버튼
+            IconButton(
+              icon: const Icon(Icons.location_on, color: Colors.teal),
+              onPressed: isSending ? null : onSendLocation,
+              tooltip: '위치 공유',
+            ),
             /// 입력창
             Expanded(
               child: Container(

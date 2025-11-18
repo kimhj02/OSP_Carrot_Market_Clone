@@ -14,16 +14,20 @@
 
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_sandbox/config/app_config.dart';
 import 'package:flutter_sandbox/models/ad.dart';
+import 'package:flutter_sandbox/services/local_app_repository.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// 광고 상태를 관리하는 Provider 클래스
 ///
 /// ChangeNotifier를 mixin하여 상태 변경 시 구독자들에게 알림을 보냅니다.
 /// Firestore를 사용하여 실제 데이터를 관리합니다.
 class AdProvider with ChangeNotifier {
-  /// Firestore 인스턴스
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  /// Firestore 인스턴스 (Firebase 모드에서만 초기화)
+  final FirebaseFirestore? _firestore =
+      AppConfig.useFirebase ? FirebaseFirestore.instance : null;
+  final LocalAppRepository _localRepo = LocalAppRepository.instance;
 
   /// 광고 목록
   List<Ad> _ads = [];
@@ -56,22 +60,25 @@ class AdProvider with ChangeNotifier {
 
   /// Firestore의 ads 컬렉션을 실시간으로 구독합니다.
   void _subscribeToAds() {
-    _adsSubscription = _firestore
-        .collection('ads')
-        .snapshots()
-        .listen(
-          (snapshot) {
-            _ads = snapshot.docs
-                .map((doc) => Ad.fromFirestore(doc.data(), doc.id))
-                .toList();
-            _errorMessage = null;
-            notifyListeners();
-          },
-          onError: (error) {
-            _errorMessage = '광고 목록 조회 중 오류 발생: $error';
-            notifyListeners();
-          },
-        );
+    if (AppConfig.useFirebase) {
+      _adsSubscription = _firestore!.collection('ads').snapshots().listen(
+        (snapshot) {
+          _ads = snapshot.docs
+              .map((doc) => Ad.fromFirestore(doc.data(), doc.id))
+              .toList();
+          _errorMessage = null;
+          notifyListeners();
+        },
+        onError: (error) {
+          _errorMessage = '광고 목록 조회 중 오류 발생: $error';
+          notifyListeners();
+        },
+      );
+    } else {
+      _ads = _localRepo.ads;
+      _errorMessage = null;
+      notifyListeners();
+    }
   }
 
   /// 광고를 추가합니다.
@@ -82,10 +89,15 @@ class AdProvider with ChangeNotifier {
   /// Returns:
   ///   - 성공 시 광고 ID, 실패 시 null
   Future<String?> addAd(Ad ad) async {
+    if (!AppConfig.useFirebase) {
+      final errorMsg = '로컬 모드에서는 광고 추가가 제한됩니다.';
+      setState(errorMessage: errorMsg);
+      return null;
+    }
     try {
       setState(loading: true, errorMessage: null);
 
-      final docRef = await _firestore.collection('ads').add(ad.toFirestore());
+      final docRef = await _firestore!.collection('ads').add(ad.toFirestore());
 
       setState(loading: false);
       return docRef.id;
@@ -104,10 +116,14 @@ class AdProvider with ChangeNotifier {
   /// Returns:
   ///   - 성공 시 true, 실패 시 false
   Future<bool> updateAd(Ad ad) async {
+    if (!AppConfig.useFirebase) {
+      setState(errorMessage: '로컬 모드에서는 광고 수정이 제한됩니다.');
+      return false;
+    }
     try {
       setState(loading: true, errorMessage: null);
 
-      await _firestore
+      await _firestore!
           .collection('ads')
           .doc(ad.id)
           .update(ad.copyWith(updatedAt: DateTime.now()).toFirestore());
@@ -129,10 +145,14 @@ class AdProvider with ChangeNotifier {
   /// Returns:
   ///   - 성공 시 true, 실패 시 false
   Future<bool> deleteAd(String adId) async {
+    if (!AppConfig.useFirebase) {
+      setState(errorMessage: '로컬 모드에서는 광고 삭제가 제한됩니다.');
+      return false;
+    }
     try {
       setState(loading: true, errorMessage: null);
 
-      await _firestore.collection('ads').doc(adId).delete();
+      await _firestore!.collection('ads').doc(adId).delete();
 
       setState(loading: false);
       return true;
@@ -152,10 +172,14 @@ class AdProvider with ChangeNotifier {
   /// Returns:
   ///   - 성공 시 true, 실패 시 false
   Future<bool> toggleAdActive(String adId, bool isActive) async {
+    if (!AppConfig.useFirebase) {
+      setState(errorMessage: '로컬 모드에서는 광고 상태 변경이 제한됩니다.');
+      return false;
+    }
     try {
       setState(loading: true, errorMessage: null);
 
-      await _firestore.collection('ads').doc(adId).update({
+      await _firestore!.collection('ads').doc(adId).update({
         'isActive': isActive,
         'updatedAt': Timestamp.fromDate(DateTime.now()),
       });

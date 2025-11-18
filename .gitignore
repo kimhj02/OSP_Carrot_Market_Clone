@@ -80,4 +80,9 @@ android/local.properties
 **/*.crt
 
 # Optional: Firebase hosting/config (avoid accidental secrets/config drift)
-firebase.json
+# firebase.json  # 프로젝트 설정 파일이므로 버전 관리에 포함 가능
+
+# Firebase Functions
+functions/node_modules/
+functions/.firebase/
+functions/*.log

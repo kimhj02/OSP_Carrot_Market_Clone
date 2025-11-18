@@ -6,10 +6,13 @@
 /// 주요 기능:
 /// - 상품 이미지 표시 (여러 장일 경우 슬라이더)
 /// - 상품 상세 정보 표시
-/// - 판매자 정보 표시
-/// - 채팅하기 버튼
+/// - 판매자 정보 표시 및 판매자 프로필 페이지 이동
+/// - 채팅하기 버튼 (채팅방 생성 또는 기존 채팅방으로 이동)
 /// - 찜하기 기능
-/// - 위치 정보
+/// - 위치 정보 및 거리 표시
+/// - 지도에서 위치 보기
+/// - 상품 공유 기능
+/// - 상품 삭제 기능 (판매자만 가능)
 ///
 /// @author Flutter Sandbox
 /// @version 1.0.0
@@ -17,14 +20,26 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_sandbox/models/product.dart';
-import 'package:flutter_sandbox/pages/chat_page.dart';
-
+import 'package:provider/provider.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart' hide EmailAuthProvider;
+import 'package:flutter_sandbox/models/product.dart';
+import 'package:flutter_sandbox/models/firestore_schema.dart';
+import 'package:flutter_sandbox/pages/chat_page.dart';
+import 'package:flutter_sandbox/pages/map_page.dart';
+import 'package:flutter_sandbox/pages/seller_profile_page.dart';
+import 'package:flutter_sandbox/config/app_config.dart';
+import 'package:flutter_sandbox/pages/product_edit_page.dart';
+import 'package:flutter_sandbox/providers/email_auth_provider.dart';
+import 'package:flutter_sandbox/providers/location_provider.dart';
+import 'package:flutter_sandbox/services/local_app_repository.dart';
 
 enum _ProductMoreAction {
+  edit,
   delete,
+  changeStatus,
 }
 
 /// 상품 상세 정보를 표시하는 페이지
@@ -52,9 +67,12 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
 
   int _currentImageIndex = 0;   /// 현재 이미지 인덱스 (여러 이미지인 경우)
   bool _isLiked = false;      /// 찜하기 상태
+  int _likeCount = 0;         /// 찜 수 (실시간 업데이트용)
+  int _viewCount = 0;         /// 조회수 (실시간 업데이트용)
   bool _isSending = false;  /// 메시지 전송 상태
   bool _hasText = false;  /// 입력창의 텍스트 여부
   bool _isDeleting = false; /// 상품 삭제 진행 상태
+  bool _hasIncrementedViewCount = false; /// 조회수 증가 여부
 
   @override
   void initState() {
@@ -63,6 +81,12 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     /// 초기값 설정
     _messageController.text = _defaultMessage;
     _hasText = true;
+    _isLiked = widget.product.isLiked;
+    _likeCount = widget.product.likeCount;
+    _viewCount = widget.product.viewCount;
+
+    /// 조회수 증가
+    _incrementViewCount();
 
     /// 입력창 상태 관리
     _messageController.addListener(() {
@@ -70,6 +94,41 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         _hasText = _messageController.text.trim().isNotEmpty;
       });
     });
+  }
+
+  /// 조회수를 증가시키는 메서드
+  Future<void> _incrementViewCount() async {
+    if (_hasIncrementedViewCount) return; // 이미 증가시켰으면 중복 방지
+    _hasIncrementedViewCount = true;
+
+    if (AppConfig.useFirebase) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('products')
+            .doc(widget.product.id)
+            .update({
+          'viewCount': FieldValue.increment(1),
+        });
+        // 로컬 상태도 업데이트
+        setState(() {
+          _viewCount = widget.product.viewCount + 1;
+        });
+      } catch (e) {
+        debugPrint('조회수 증가 오류: $e');
+      }
+    } else {
+      // 로컬 모드
+      final listing = LocalAppRepository.instance.getListing(widget.product.id);
+      if (listing != null) {
+        LocalAppRepository.instance.updateListing(
+          listingId: widget.product.id,
+          viewCount: listing.viewCount + 1,
+        );
+        setState(() {
+          _viewCount = widget.product.viewCount + 1;
+        });
+      }
+    }
   }
 
   @override
@@ -99,20 +158,21 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         actions: [
           IconButton(
             icon: const Icon(Icons.share, color: Colors.black),
-            onPressed: () {
-              // 공유 기능 (향후 구현)
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('공유 기능은 준비 중입니다')),
-              );
-            },
+            onPressed: () => _shareProduct(),
           ),
           PopupMenuButton<_ProductMoreAction>(
             icon: const Icon(Icons.more_vert, color: Colors.black),
             enabled: !_isDeleting,
             onSelected: (action) {
               switch (action) {
+                case _ProductMoreAction.edit:
+                  _navigateToEditPage();
+                  break;
                 case _ProductMoreAction.delete:
                   _confirmDeleteProduct();
+                  break;
+                case _ProductMoreAction.changeStatus:
+                  _showStatusChangeDialog();
                   break;
               }
             },
@@ -121,9 +181,36 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
               if (_canDeleteProduct) {
                 entries.add(
                   PopupMenuItem<_ProductMoreAction>(
+                    value: _ProductMoreAction.edit,
+                    child: const Row(
+                      children: [
+                        Icon(Icons.edit_outlined, color: Colors.teal),
+                        SizedBox(width: 12),
+                        Text('상품 수정'),
+                      ],
+                    ),
+                  ),
+                );
+                entries.add(
+                  PopupMenuItem<_ProductMoreAction>(
+                    value: _ProductMoreAction.changeStatus,
+                    child: const Row(
+                      children: [
+                        Icon(Icons.swap_horiz, color: Colors.orange),
+                        SizedBox(width: 12),
+                        Text('상태 변경'),
+                      ],
+                    ),
+                  ),
+                );
+                entries.add(
+                  const PopupMenuDivider(),
+                );
+                entries.add(
+                  PopupMenuItem<_ProductMoreAction>(
                     value: _ProductMoreAction.delete,
-                    child: Row(
-                      children: const [
+                    child: const Row(
+                      children: [
                         Icon(Icons.delete_outline, color: Colors.redAccent),
                         SizedBox(width: 12),
                         Text('상품 삭제'),
@@ -135,7 +222,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                 entries.add(
                   const PopupMenuItem<_ProductMoreAction>(
                     enabled: false,
-                    child: Text('삭제 권한이 없습니다'),
+                    child: Text('수정 권한이 없습니다'),
                   ),
                 );
               }
@@ -232,7 +319,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                       Icon(Icons.visibility, size: 16, color: Colors.grey[600]),
                       const SizedBox(width: 4),
                       Text(
-                        '조회 ${widget.product.viewCount}',
+                        '조회 $_viewCount',
                         style: TextStyle(
                           fontSize: 14,
                           color: Colors.grey[600],
@@ -242,7 +329,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                       Icon(Icons.favorite, size: 16, color: Colors.grey[600]),
                       const SizedBox(width: 4),
                       Text(
-                        '찜 ${widget.product.likeCount}',
+                        '찜 $_likeCount',
                         style: TextStyle(
                           fontSize: 14,
                           color: Colors.grey[600],
@@ -271,18 +358,55 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                   const SizedBox(height: 24),
 
                   // 위치 정보
-                  Row(
-                    children: [
-                      Icon(Icons.location_on, size: 20, color: Colors.grey[700]),
-                      const SizedBox(width: 8),
-                      Text(
-                        widget.product.location,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[700],
+                  Consumer<LocationProvider>(
+                    builder: (context, locationProvider, child) {
+                      String distanceText = '';
+                      if (locationProvider.isLocationFilterEnabled &&
+                          locationProvider.filterLatitude != null &&
+                          locationProvider.filterLongitude != null &&
+                          widget.product.x != 0.0 &&
+                          widget.product.y != 0.0) {
+                        final distance = Geolocator.distanceBetween(
+                          locationProvider.filterLatitude!,
+                          locationProvider.filterLongitude!,
+                          widget.product.x,
+                          widget.product.y,
+                        );
+                        if (distance >= 1000) {
+                          distanceText = ' • ${(distance / 1000).toStringAsFixed(1)}km';
+                        } else {
+                          distanceText = ' • ${distance.toInt()}m';
+                        }
+                      }
+                      
+                      return InkWell(
+                        onTap: () {
+                          // 지도에서 위치 보기
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const MapScreen(),
+                            ),
+                          );
+                        },
+                        child: Row(
+                          children: [
+                            Icon(Icons.location_on, size: 20, color: Colors.grey[700]),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '${widget.product.location}$distanceText',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[700],
+                                ),
+                              ),
+                            ),
+                            Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey[400]),
+                          ],
                         ),
-                      ),
-                    ],
+                      );
+                    },
                   ),
                   const SizedBox(height: 8),
                   Text(
@@ -426,9 +550,15 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         // 판매자 프로필 보기 버튼
         OutlinedButton(
           onPressed: () {
-            // 판매자 프로필 페이지 (향후 구현)
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('판매자 프로필은 준비 중입니다')),
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => SellerProfilePage(
+                  sellerId: widget.product.sellerId,
+                  sellerNickname: widget.product.sellerNickname,
+                  sellerProfileImageUrl: widget.product.sellerProfileImageUrl,
+                ),
+              ),
             );
           },
           style: OutlinedButton.styleFrom(
@@ -563,12 +693,13 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
 
     try {
       /// 2. 현재 사용자 확인
-      final currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser == null) {
+      final authProvider = context.read<EmailAuthProvider>();
+      final appUser = authProvider.user;
+      if (appUser == null) {
         throw Exception('로그인이 필요합니다');
       }
 
-      final buyerId = currentUser.uid;
+      final buyerId = appUser.uid;
       final sellerId = widget.product.sellerId;
 
       /// 3. 본인 상품 체크
@@ -576,20 +707,41 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         throw Exception('본인의 상품에는 채팅할 수 없습니다');
       }
 
-      // 4. 기존 채팅방 확인
-      String? chatRoomId = await _findExistingChatRoom(
-        buyerId,
-        sellerId,
-        widget.product.id,
-      );
-
-      // 5. 채팅방 없으면 생성
-      if (chatRoomId == null) {
-        chatRoomId = await _createChatRoom(buyerId, sellerId);
+      // 같이사요 상품인지 확인
+      final isGroupBuy = widget.product.category == ProductCategory.groupBuy;
+      
+      String chatRoomId;
+      if (AppConfig.useFirebase) {
+        if (isGroupBuy) {
+          // 같이사요 상품: 그룹 채팅방 생성 또는 참여
+          chatRoomId = await _getOrCreateGroupChatRoom(
+            buyerId,
+            sellerId,
+            widget.product.id,
+          );
+        } else {
+          // 일반 상품: 1:1 채팅방
+          final existingRoomId = await _findExistingChatRoom(
+            buyerId,
+            sellerId,
+            widget.product.id,
+          );
+          chatRoomId = existingRoomId ?? await _createChatRoom(buyerId, sellerId);
+        }
+        await _sendMessage(chatRoomId, buyerId, message);
+      } else {
+        final repo = LocalAppRepository.instance;
+        chatRoomId = await repo.ensureChatRoom(
+          listingId: widget.product.id,
+          buyerUid: buyerId,
+        );
+        await repo.sendMessage(
+          roomId: chatRoomId,
+          senderUid: buyerId,
+          text: message,
+        );
+        await repo.markMessagesAsRead(roomId: chatRoomId, userId: buyerId);
       }
-
-      // 6. 메시지 전송
-      await _sendMessage(chatRoomId, buyerId, message);
 
       // 7. 채팅 페이지로 이동
       if (!mounted) return;
@@ -598,7 +750,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         context,
         MaterialPageRoute(
           builder: (context) => ChatPage(
-            chatRoomId: chatRoomId!,
+            chatRoomId: chatRoomId,
             opponentName: widget.product.sellerNickname,
           ),
         ),
@@ -633,7 +785,115 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     return null;
   }
 
-  /// 새 채팅방 생성
+  /// 같이사요 그룹 채팅방 생성 또는 참여
+  Future<String> _getOrCreateGroupChatRoom(
+    String buyerId,
+    String sellerId,
+    String productId,
+  ) async {
+    // 기존 그룹 채팅방 찾기 (같은 상품에 대한 그룹 채팅방)
+    final querySnapshot = await FirebaseFirestore.instance
+        .collection('chatRooms')
+        .where('productId', isEqualTo: productId)
+        .where('type', isEqualTo: 'groupBuy')
+        .limit(1)
+        .get();
+
+    if (querySnapshot.docs.isNotEmpty) {
+      // 기존 그룹 채팅방이 있으면 참여
+      final chatRoomDoc = querySnapshot.docs.first;
+      final chatRoomId = chatRoomDoc.id;
+      final data = chatRoomDoc.data();
+      final participants = List<String>.from(data['participants'] ?? []);
+      final participantNames = Map<String, String>.from(data['participantNames'] ?? {});
+      final unreadCount = Map<String, int>.from(
+        (data['unreadCount'] as Map<String, dynamic>?)?.map(
+          (key, value) => MapEntry(key, value as int),
+        ) ?? {},
+      );
+
+      // 이미 참여 중이면 그대로 반환
+      if (participants.contains(buyerId)) {
+        return chatRoomId;
+      }
+
+      // 참여자 정보 가져오기
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(buyerId)
+          .get();
+      final buyerName = userDoc.exists
+          ? (userDoc.data()?['name'] ?? userDoc.data()?['displayName'] ?? '참여자')
+          : '참여자';
+
+      // 참여자 추가
+      participants.add(buyerId);
+      participantNames[buyerId] = buyerName;
+      unreadCount[buyerId] = 0;
+
+      await FirebaseFirestore.instance
+          .collection('chatRooms')
+          .doc(chatRoomId)
+          .update({
+        'participants': participants,
+        'participantNames': participantNames,
+        'unreadCount': unreadCount,
+      });
+
+      return chatRoomId;
+    } else {
+      // 새 그룹 채팅방 생성
+      return await _createGroupChatRoom(buyerId, sellerId);
+    }
+  }
+
+  /// 새 그룹 채팅방 생성
+  Future<String> _createGroupChatRoom(String buyerId, String sellerId) async {
+    // 참여자 정보 가져오기
+    final buyerDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(buyerId)
+        .get();
+    final buyerName = buyerDoc.exists
+        ? (buyerDoc.data()?['name'] ?? buyerDoc.data()?['displayName'] ?? '참여자')
+        : '참여자';
+
+    /// 채팅방 데이터 생성
+    final chatRoomData = {
+      'participants': [sellerId, buyerId], // 모집자 먼저, 참여자 추가
+      'participantNames': {
+        sellerId: widget.product.sellerNickname,
+        buyerId: buyerName,
+      },
+
+      'productId': widget.product.id,
+      'productTitle': widget.product.title,
+      'productImage': widget.product.imageUrls.isNotEmpty
+          ? widget.product.imageUrls.first
+          : '',
+      'productPrice': widget.product.price,
+
+      'lastMessage': '',
+      'lastMessageTime': FieldValue.serverTimestamp(),
+
+      'unreadCount': {
+        sellerId: 0,
+        buyerId: 0,
+      },
+
+      'createdAt': FieldValue.serverTimestamp(),
+      'type': 'groupBuy', // 그룹 채팅방 타입
+    };
+
+    /// Firestore에 저장
+    final docRef = await FirebaseFirestore.instance
+                  .collection('chatRooms')
+                  .add(chatRoomData);
+
+    return docRef.id;
+  }
+
+  /// 새 채팅방 생성 (1:1)
   Future<String> _createChatRoom(String buyerId, String sellerId) async {
 
     /// 구매자 정보 가져오기
@@ -643,7 +903,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         .get();
 
     final buyerName = userDoc.exists
-        ? (userDoc.data()?['name'] ?? '구매자')
+        ? (userDoc.data()?['name'] ?? userDoc.data()?['displayName'] ?? '구매자')
         : '구매자';
 
     /// 채팅방 데이터 생성
@@ -719,6 +979,118 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     }
   }
 
+  /// 수정 페이지로 이동
+  Future<void> _navigateToEditPage() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ProductEditPage(product: widget.product),
+      ),
+    );
+    
+    if (result == true && mounted) {
+      // 수정 완료 후 상품 정보 새로고침
+      Navigator.pop(context, true);
+    }
+  }
+
+  /// 상태 변경 다이얼로그 표시
+  void _showStatusChangeDialog() {
+    final currentStatus = widget.product.status;
+    final availableStatuses = <ProductStatus>[];
+    
+    // 현재 상태에 따라 변경 가능한 상태 목록 생성
+    switch (currentStatus) {
+      case ProductStatus.onSale:
+        availableStatuses.addAll([ProductStatus.reserved, ProductStatus.sold]);
+        break;
+      case ProductStatus.reserved:
+        availableStatuses.addAll([ProductStatus.onSale, ProductStatus.sold]);
+        break;
+      case ProductStatus.sold:
+        availableStatuses.add(ProductStatus.onSale);
+        break;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('상품 상태 변경'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: availableStatuses.map((status) {
+              return ListTile(
+                title: Text(_getStatusText(status)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _changeProductStatus(status);
+                },
+              );
+            }).toList(),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('취소'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// 상태 텍스트 반환
+  String _getStatusText(ProductStatus status) {
+    switch (status) {
+      case ProductStatus.onSale:
+        return '판매중';
+      case ProductStatus.reserved:
+        return '예약중';
+      case ProductStatus.sold:
+        return '판매완료';
+    }
+  }
+
+  /// 상품 상태 변경
+  Future<void> _changeProductStatus(ProductStatus newStatus) async {
+    try {
+      ListingStatus listingStatus;
+      switch (newStatus) {
+        case ProductStatus.onSale:
+          listingStatus = ListingStatus.onSale;
+          break;
+        case ProductStatus.reserved:
+          listingStatus = ListingStatus.reserved;
+          break;
+        case ProductStatus.sold:
+          listingStatus = ListingStatus.sold;
+          break;
+      }
+
+      if (AppConfig.useFirebase) {
+        await FirebaseFirestore.instance
+            .collection('products')
+            .doc(widget.product.id)
+            .update({'status': listingStatus.index});
+      } else {
+        await LocalAppRepository.instance.updateListing(
+          listingId: widget.product.id,
+          status: listingStatus,
+        );
+      }
+
+      if (mounted) {
+        _showSnackBar('상품 상태가 변경되었습니다');
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar('상태 변경에 실패했습니다: $e');
+      }
+    }
+  }
+
   /// 스낵바 표시
   void _showSnackBar(String message) {
     if (!mounted) return;
@@ -731,17 +1103,126 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   }
 
 
-  void _toggleLike() {
+  /// 상품 공유 기능
+  Future<void> _shareProduct() async {
+    try {
+      final shareText = '${widget.product.title}\n'
+          '${widget.product.formattedPrice}\n'
+          '${widget.product.description}\n'
+          '위치: ${widget.product.location}';
+      
+      await Share.share(
+        shareText,
+        subject: widget.product.title,
+      );
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar('공유 중 오류가 발생했습니다');
+      }
+    }
+  }
+
+  Future<void> _toggleLike() async {
+    final authProvider = context.read<EmailAuthProvider>();
+    final uid = authProvider.user?.uid;
+    
+    if (uid == null) {
+      _showSnackBar('로그인이 필요합니다');
+      return;
+    }
+
+    // UI 즉시 업데이트 (낙관적 업데이트)
+    final wasLiked = _isLiked;
+    final newLikeCount = wasLiked ? _likeCount - 1 : _likeCount + 1;
+    
     setState(() {
-      _isLiked = !_isLiked;
+      _isLiked = !wasLiked;
+      _likeCount = newLikeCount;
     });
-    _showSnackBar(_isLiked ? '찜 목록에 추가했습니다' : '찜을 취소했습니다');
+
+    if (AppConfig.useFirebase) {
+      // Firebase 모드: Firestore에 업데이트
+      try {
+        final productRef = FirebaseFirestore.instance
+            .collection('products')
+            .doc(widget.product.id);
+        
+        final productDoc = await productRef.get();
+        if (!productDoc.exists) {
+          // 실패 시 롤백
+          setState(() {
+            _isLiked = wasLiked;
+            _likeCount = widget.product.likeCount;
+          });
+          _showSnackBar('상품을 찾을 수 없습니다');
+          return;
+        }
+        
+        final data = productDoc.data()!;
+        final likedUserIds = List<String>.from(data['likedUserIds'] ?? []);
+        final isCurrentlyLiked = likedUserIds.contains(uid);
+        
+        if (isCurrentlyLiked) {
+          // 찜 취소
+          likedUserIds.remove(uid);
+        } else {
+          // 찜 추가
+          likedUserIds.add(uid);
+        }
+        
+        await productRef.update({
+          'likedUserIds': likedUserIds,
+          'likeCount': likedUserIds.length,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        
+        // Firestore 업데이트 후 실제 값으로 동기화
+        setState(() {
+          _likeCount = likedUserIds.length;
+        });
+        
+        _showSnackBar(_isLiked ? '찜 목록에 추가했습니다' : '찜을 취소했습니다');
+      } catch (e) {
+        debugPrint('찜 기능 오류: $e');
+        // 실패 시 롤백
+        setState(() {
+          _isLiked = wasLiked;
+          _likeCount = widget.product.likeCount;
+        });
+        _showSnackBar('오류가 발생했습니다');
+      }
+    } else {
+      // 로컬 모드
+      try {
+        LocalAppRepository.instance.toggleFavorite(widget.product.id, uid);
+        final listing = LocalAppRepository.instance.getListing(widget.product.id);
+        if (listing != null) {
+          setState(() {
+            _likeCount = listing.likeCount;
+          });
+        }
+        _showSnackBar(_isLiked ? '찜 목록에 추가했습니다' : '찜을 취소했습니다');
+      } catch (e) {
+        // 실패 시 롤백
+        setState(() {
+          _isLiked = wasLiked;
+          _likeCount = widget.product.likeCount;
+        });
+        _showSnackBar('오류가 발생했습니다');
+      }
+    }
   }
 
   bool get _canDeleteProduct {
-    final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser == null) return false;
-    return currentUser.uid == widget.product.sellerId;
+    if (AppConfig.useFirebase) {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) return false;
+      return currentUser.uid == widget.product.sellerId;
+    }
+    final authProvider = context.read<EmailAuthProvider>();
+    final uid = authProvider.user?.uid;
+    if (uid == null) return false;
+    return uid == widget.product.sellerId;
   }
 
   Future<void> _confirmDeleteProduct() async {
@@ -786,10 +1267,14 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     });
 
     try {
-      await FirebaseFirestore.instance
-          .collection('products')
-          .doc(widget.product.id)
-          .delete();
+      if (AppConfig.useFirebase) {
+        await FirebaseFirestore.instance
+            .collection('products')
+            .doc(widget.product.id)
+            .delete();
+      } else {
+        await LocalAppRepository.instance.deleteListing(widget.product.id);
+      }
 
       if (!mounted) return;
       _showSnackBar('상품을 삭제했습니다');

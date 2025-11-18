@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart' hide EmailAuthProvider;
 import 'package:flutter_sandbox/providers/email_auth_provider.dart';
+import 'package:flutter_sandbox/config/app_config.dart';
 
 class VerifyEmailPage extends StatefulWidget {
   const VerifyEmailPage({super.key});
@@ -20,22 +21,25 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
     super.initState();
 
 
-    _timer = Timer.periodic(const Duration(seconds: 5), (timer) async {
+    if (AppConfig.useFirebase) {
+      _timer = Timer.periodic(const Duration(seconds: 5), (timer) async {
+        if (!AppConfig.useFirebase) {
+          timer.cancel();
+          return;
+        }
 
-      if (FirebaseAuth.instance.currentUser == null) {
-        timer.cancel();
-        return;
-      }
-
-      /// Firebase 서버에 최신 사용자 정보 요청
-      await FirebaseAuth.instance.currentUser?.reload();
-      final user = FirebaseAuth.instance.currentUser;
-
-      if (user?.emailVerified == true) {
-        timer.cancel();
-        print("✅ 이메일 인증 확인됨. AuthCheck가 화면을 전환합니다.");
-      }
-    });
+        final currentUser = FirebaseAuth.instance.currentUser;
+        if (currentUser == null) {
+          timer.cancel();
+          return;
+        }
+        await currentUser.reload();
+        if (FirebaseAuth.instance.currentUser?.emailVerified == true) {
+          timer.cancel();
+          debugPrint('✅ 이메일 인증 확인됨. AuthCheck가 화면을 전환합니다.');
+        }
+      });
+    }
   }
 
   @override
@@ -46,6 +50,15 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
 
   /// 인증 이메일 재전송 함수
   Future<void> _resendVerificationEmail() async {
+    if (!AppConfig.useFirebase) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('로컬 모드에서는 인증이 필요하지 않습니다.')),
+        );
+      }
+      return;
+    }
+
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
@@ -142,7 +155,9 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
               ),
               const SizedBox(height: 16),
               Text(
-                '본인 인증을 위해 $userEmail로\n전송된 링크를 클릭하세요.',
+                AppConfig.useFirebase
+                    ? '본인 인증을 위해 $userEmail로\n전송된 링크를 클릭하세요.'
+                    : '현재 로컬 모드로 실행 중입니다.\n모든 기능을 자유롭게 사용해보세요.',
                 style: const TextStyle(fontSize: 16, color: Colors.black54),
                 textAlign: TextAlign.center,
               ),
@@ -163,7 +178,9 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
                   foregroundColor: Colors.white,
                 ),
                 /// 이미 전송 중이면 버튼 비활성화
-                onPressed: _isSendingEmail ? null : _showResendConfirmationDialog,
+                onPressed: AppConfig.useFirebase
+                    ? (_isSendingEmail ? null : _showResendConfirmationDialog)
+                    : null,
               ),
             ],
           ),
