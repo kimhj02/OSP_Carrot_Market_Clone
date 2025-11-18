@@ -540,6 +540,11 @@ class _HomePageState extends State<HomePage> {
         locationProvider.currentLongitude!,
       );
       
+      // 화면 리로드
+      if (mounted) {
+        setState(() {});
+      }
+      
       // 백그라운드에서 최신 위치 가져오기
       _updateCurrentLocationInBackground();
       return;
@@ -595,6 +600,9 @@ class _HomePageState extends State<HomePage> {
         position.latitude,
         position.longitude,
       );
+      
+      // 화면 리로드
+      setState(() {});
       
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -659,6 +667,11 @@ class _HomePageState extends State<HomePage> {
         position.latitude,
         position.longitude,
       );
+      
+      // 화면 리로드
+      if (mounted) {
+        setState(() {});
+      }
     } catch (e) {
       // 백그라운드 업데이트 실패는 무시 (사용자 경험에 영향 없음)
       debugPrint('백그라운드 위치 업데이트 실패: $e');
@@ -667,6 +680,10 @@ class _HomePageState extends State<HomePage> {
 
   void _selectSchool() {
     context.read<LocationProvider>().setSchoolLocation();
+    // 화면 리로드
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _toggleFabMenu() {
@@ -1170,43 +1187,48 @@ class _HomePageState extends State<HomePage> {
   Widget _buildProductList() {
     final viewerUid = context.read<EmailAuthProvider>().user?.uid;
     
-    // Firebase 사용 시 StreamBuilder로 실시간 업데이트
-    if (AppConfig.useFirebase) {
-      return StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('products')
-            .orderBy('createdAt', descending: true)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          
-          if (snapshot.hasError) {
-            return Center(child: Text('오류: ${snapshot.error}'));
-          }
-          
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(
-              child: Text('등록된 상품이 없습니다.'),
-            );
-          }
-          
-          final products = snapshot.data!.docs.map((doc) {
-            final data = doc.data() as Map<String, dynamic>;
-            return _firestoreDocToProduct(doc.id, data, viewerUid);
-          }).toList();
-          
-          return _buildProductGridView(products);
-        },
-      );
-    }
-    
-    // 로컬 모드
-    final products = LocalAppRepository.instance
-        .getProducts(viewerUid: viewerUid)
-        .toList();
-    return _buildProductGridView(products);
+    // LocationProvider 변경 감지를 위해 Consumer로 감싸기
+    return Consumer<LocationProvider>(
+      builder: (context, locationProvider, child) {
+        // Firebase 사용 시 StreamBuilder로 실시간 업데이트
+        if (AppConfig.useFirebase) {
+          return StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('products')
+                .orderBy('createdAt', descending: true)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              
+              if (snapshot.hasError) {
+                return Center(child: Text('오류: ${snapshot.error}'));
+              }
+              
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return const Center(
+                  child: Text('등록된 상품이 없습니다.'),
+                );
+              }
+              
+              final products = snapshot.data!.docs.map((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                return _firestoreDocToProduct(doc.id, data, viewerUid);
+              }).toList();
+              
+              return _buildProductGridView(products);
+            },
+          );
+        }
+        
+        // 로컬 모드
+        final products = LocalAppRepository.instance
+            .getProducts(viewerUid: viewerUid)
+            .toList();
+        return _buildProductGridView(products);
+      },
+    );
   }
   
   /// Product 리스트를 GridView로 표시
