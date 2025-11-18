@@ -286,7 +286,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                         ),
                         decoration: BoxDecoration(
                           color: _getStatusColor(widget.product.status)
-                              .withOpacity(0.1),
+                              .withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
@@ -535,7 +535,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                       shape: BoxShape.circle,
                       color: _currentImageIndex == index
                           ? Colors.white
-                          : Colors.white.withOpacity(0.5),
+                          : Colors.white.withValues(alpha: 0.5),
                     ),
                   ),
                 ),
@@ -619,7 +619,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 4,
             offset: const Offset(0, -2),
           ),

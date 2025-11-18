@@ -584,8 +584,8 @@ class _ChatListItem extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      splashColor: Colors.teal.withOpacity(0.1),
-      highlightColor: Colors.teal.withOpacity(0.05),
+      splashColor: Colors.teal.withValues(alpha: 0.1),
+      highlightColor: Colors.teal.withValues(alpha: 0.05),
       child: Container(
         color: Colors.white,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

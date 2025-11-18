@@ -259,7 +259,7 @@ class _SearchPageState extends State<SearchPage> {
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: Colors.teal.withOpacity(0.05),
+      color: Colors.teal.withValues(alpha: 0.05),
       child: Row(
         children: [
           Icon(
@@ -283,9 +283,9 @@ class _SearchPageState extends State<SearchPage> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
-              color: Colors.teal.withOpacity(0.1),
+              color: Colors.teal.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.teal.withOpacity(0.3)),
+              border: Border.all(color: Colors.teal.withValues(alpha: 0.3)),
             ),
             child: Text(
               locationProvider.searchRadiusText,

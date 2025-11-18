@@ -92,7 +92,7 @@ class _HomePageState extends State<HomePage> {
     final AppUserProfile? appUser = context.watch<EmailAuthProvider>().user;
     final locationLabel =
         appUser != null ? _resolveLocationLabel(appUser) : '강남구 역삼동';
-    // 채팅(2)과 나의 금오(3) 탭에서는 AppBar 숨김
+    // 채팅(2)과 내 정보(3) 탭에서는 AppBar 숨김
     final shouldShowAppBar = IndexedStackState != 2 && IndexedStackState != 3;
     return Scaffold(
       backgroundColor: Colors.grey[50],
@@ -155,9 +155,9 @@ class _HomePageState extends State<HomePage> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.teal.withOpacity(0.1),
+                              color: Colors.teal.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.teal.withOpacity(0.3)),
+                              border: Border.all(color: Colors.teal.withValues(alpha: 0.3)),
                             ),
                             child: Text(
                               locationProvider.searchRadiusText,
@@ -280,7 +280,7 @@ class _HomePageState extends State<HomePage> {
                   ? const Center(child: Text('로그인 해주세요'))
                   : const ProfilePage();
             },
-          ), // 나의 금오
+          ), // 내 정보
         ],
       ),
 
@@ -316,7 +316,7 @@ class _HomePageState extends State<HomePage> {
                 icon: Icon(Icons.chat_bubble_outline),
                 label: '채팅',
               ),
-              BottomNavigationBarItem(icon: Icon(Icons.person), label: '나의 금오'),
+              BottomNavigationBarItem(icon: Icon(Icons.person), label: '내 정보'),
             ],
             onTap: (index) {
               if (index == 1) {
@@ -934,7 +934,7 @@ class _HomePageState extends State<HomePage> {
 
               return Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                color: Colors.teal.withOpacity(0.05),
+                color: Colors.teal.withValues(alpha: 0.05),
                 child: Row(
                   children: [
                     Icon(
@@ -986,7 +986,7 @@ class _HomePageState extends State<HomePage> {
 
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          color: Colors.teal.withOpacity(0.05),
+          color: Colors.teal.withValues(alpha: 0.05),
           child: Row(
             children: [
               Icon(
@@ -1357,8 +1357,8 @@ class _HomePageState extends State<HomePage> {
                 );
               },
               borderRadius: BorderRadius.circular(12),
-              splashColor: Colors.teal.withOpacity(0.1),
-              highlightColor: Colors.teal.withOpacity(0.05),
+              splashColor: Colors.teal.withValues(alpha: 0.1),
+              highlightColor: Colors.teal.withValues(alpha: 0.05),
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 padding: const EdgeInsets.all(16),
@@ -1368,7 +1368,7 @@ class _HomePageState extends State<HomePage> {
                   border: Border.all(color: Colors.grey[200]!, width: 1),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.03),
+                      color: Colors.black.withValues(alpha: 0.03),
                       blurRadius: 4,
                       offset: const Offset(0, 2),
                     ),
@@ -1591,7 +1591,7 @@ class _FabMenuItem extends StatelessWidget {
           borderRadius: BorderRadius.circular(18),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.25),
+              color: Colors.black.withValues(alpha: 0.25),
               blurRadius: 12,
               offset: const Offset(0, 6),
             ),
@@ -1603,7 +1603,7 @@ class _FabMenuItem extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: iconColor.withOpacity(0.12),
+                color: iconColor.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, color: iconColor, size: 22),

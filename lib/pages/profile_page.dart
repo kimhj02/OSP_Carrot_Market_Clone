@@ -163,7 +163,7 @@ class _ProfilePageState extends State<ProfilePage>
       child: Row(
         children: [
           const Text(
-            '나의 금오',
+            '내 프로필',
             style: TextStyle(
               color: Colors.black87,
               fontSize: 24,
