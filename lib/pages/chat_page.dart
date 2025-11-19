@@ -217,24 +217,18 @@ class _ChatPageState extends State<ChatPage> {
           debugPrint('✅ 메시지 읽음 처리 완료: ${unreadMessages.length}개');
         }
 
-        // unreadCount를 0으로 업데이트 (중첩 필드 업데이트)
+        // unreadCount를 0으로 업데이트 (중첩 필드 원자적 업데이트)
+        // FieldPath를 사용하여 사용자 ID에 점(.)이 포함되어도 안전하게 처리
         final chatRoomRef = FirebaseFirestore.instance
             .collection(ChatConstants.chatRoomsCollection)
             .doc(widget.chatRoomId);
         
-        // 현재 unreadCount Map 가져오기
-        final chatRoomDoc = await chatRoomRef.get();
-        if (chatRoomDoc.exists) {
-          final currentUnreadCount = chatRoomDoc.data()?['unreadCount'] as Map<String, dynamic>? ?? {};
-          final updatedUnreadCount = Map<String, dynamic>.from(currentUnreadCount);
-          updatedUnreadCount[_currentUserId!] = 0;
-          
-          await chatRoomRef.update({
-            'unreadCount': updatedUnreadCount,
-          });
-          
-          debugPrint('✅ unreadCount 업데이트 완료: ${_currentUserId} -> 0');
-        }
+        // 중첩 필드를 원자적으로 업데이트하여 race condition 방지
+        await chatRoomRef.update({
+          FieldPath(['unreadCount', _currentUserId!]): 0,
+        });
+        
+        debugPrint('✅ unreadCount 업데이트 완료: ${_currentUserId} -> 0');
       } catch (e, stackTrace) {
         debugPrint('❌ 메시지 읽음 처리 실패: $e');
         debugPrint('❌ StackTrace: $stackTrace');
