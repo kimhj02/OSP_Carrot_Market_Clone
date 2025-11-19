@@ -520,7 +520,7 @@ class _ChatListPageState extends State<ChatListPage> {
       lastMessage: room.lastMessage,
       lastMessageTime: room.lastMessageTime,
       unreadCount: Map<String, int>.from(room.unread),
-      type: room.listingType == ListingType.groupBuy ? 'group' : 'purchase',
+      type: room.listingType == ListingType.groupBuy ? 'groupBuy' : 'purchase',
     );
   }
 
