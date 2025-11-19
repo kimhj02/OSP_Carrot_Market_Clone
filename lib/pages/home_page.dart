@@ -915,20 +915,57 @@ class _HomePageState extends State<HomePage> {
                 return _firestoreDocToProduct(doc.id, data, viewerUid);
               }).toList();
 
+              // 위치 필터링이 활성화된 경우 meetLocations를 확인하여 필터링
               var filteredCount = products.length;
               if (locationProvider.filterLatitude != null &&
                   locationProvider.filterLongitude != null) {
-                filteredCount = products.where((product) {
-                  if (product.x == 0.0 && product.y == 0.0) {
-                    return false;
+                // 원본 문서에서 meetLocations 확인
+                filteredCount = snapshot.data!.docs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final location = data['location'] as GeoPoint?;
+                  final meetLocations = data['meetLocations'] as List?;
+                  
+                  // meetLocations가 있으면 모든 위치를 확인
+                  if (meetLocations != null && meetLocations.isNotEmpty) {
+                    for (final loc in meetLocations) {
+                      GeoPoint? geoPoint;
+                      if (loc is GeoPoint) {
+                        geoPoint = loc;
+                      } else if (loc is Map) {
+                        final lat = loc['latitude'] as double?;
+                        final lng = loc['longitude'] as double?;
+                        if (lat != null && lng != null) {
+                          geoPoint = GeoPoint(lat, lng);
+                        }
+                      }
+                      
+                      if (geoPoint != null) {
+                        final distance = Geolocator.distanceBetween(
+                          locationProvider.filterLatitude!,
+                          locationProvider.filterLongitude!,
+                          geoPoint.latitude,
+                          geoPoint.longitude,
+                        );
+                        if (distance <= locationProvider.searchRadius) {
+                          return true; // 하나라도 범위 내에 있으면 포함
+                        }
+                      }
+                    }
+                    return false; // 모든 위치가 범위 밖이면 제외
                   }
-                  final distance = Geolocator.distanceBetween(
-                    locationProvider.filterLatitude!,
-                    locationProvider.filterLongitude!,
-                    product.x,
-                    product.y,
-                  );
-                  return distance <= locationProvider.searchRadius;
+                  
+                  // meetLocations가 없으면 기본 location 확인
+                  if (location != null) {
+                    final distance = Geolocator.distanceBetween(
+                      locationProvider.filterLatitude!,
+                      locationProvider.filterLongitude!,
+                      location.latitude,
+                      location.longitude,
+                    );
+                    return distance <= locationProvider.searchRadius;
+                  }
+                  
+                  return false; // 위치 정보가 없으면 제외
                 }).length;
               }
 
@@ -963,22 +1000,34 @@ class _HomePageState extends State<HomePage> {
         }
 
         // 로컬 모드
-        final products = LocalAppRepository.instance
-            .getProducts(viewerUid: viewerUid)
-            .toList();
+        var listings = LocalAppRepository.instance.getAllListings();
         
-        var filteredCount = products.length;
+        var filteredCount = listings.length;
         if (locationProvider.filterLatitude != null &&
             locationProvider.filterLongitude != null) {
-          filteredCount = products.where((product) {
-            if (product.x == 0.0 && product.y == 0.0) {
-              return false;
+          filteredCount = listings.where((listing) {
+            // meetLocations가 있으면 모든 위치를 확인
+            if (listing.meetLocations.isNotEmpty) {
+              for (final loc in listing.meetLocations) {
+                final distance = Geolocator.distanceBetween(
+                  locationProvider.filterLatitude!,
+                  locationProvider.filterLongitude!,
+                  loc.latitude,
+                  loc.longitude,
+                );
+                if (distance <= locationProvider.searchRadius) {
+                  return true; // 하나라도 범위 내에 있으면 포함
+                }
+              }
+              return false; // 모든 위치가 범위 밖이면 제외
             }
+            
+            // meetLocations가 없으면 기본 location 확인
             final distance = Geolocator.distanceBetween(
               locationProvider.filterLatitude!,
               locationProvider.filterLongitude!,
-              product.x,
-              product.y,
+              listing.location.latitude,
+              listing.location.longitude,
             );
             return distance <= locationProvider.searchRadius;
           }).length;
@@ -1213,7 +1262,61 @@ class _HomePageState extends State<HomePage> {
                 );
               }
               
-              final products = snapshot.data!.docs.map((doc) {
+              // 위치 필터링이 활성화된 경우 meetLocations를 확인하여 필터링
+              var docs = snapshot.data!.docs;
+              if (locationProvider.isLocationFilterEnabled &&
+                  locationProvider.filterLatitude != null &&
+                  locationProvider.filterLongitude != null) {
+                docs = docs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final location = data['location'] as GeoPoint?;
+                  final meetLocations = data['meetLocations'] as List?;
+                  
+                  // meetLocations가 있으면 모든 위치를 확인
+                  if (meetLocations != null && meetLocations.isNotEmpty) {
+                    for (final loc in meetLocations) {
+                      GeoPoint? geoPoint;
+                      if (loc is GeoPoint) {
+                        geoPoint = loc;
+                      } else if (loc is Map) {
+                        final lat = loc['latitude'] as double?;
+                        final lng = loc['longitude'] as double?;
+                        if (lat != null && lng != null) {
+                          geoPoint = GeoPoint(lat, lng);
+                        }
+                      }
+                      
+                      if (geoPoint != null) {
+                        final distance = Geolocator.distanceBetween(
+                          locationProvider.filterLatitude!,
+                          locationProvider.filterLongitude!,
+                          geoPoint.latitude,
+                          geoPoint.longitude,
+                        );
+                        if (distance <= locationProvider.searchRadius) {
+                          return true; // 하나라도 범위 내에 있으면 포함
+                        }
+                      }
+                    }
+                    return false; // 모든 위치가 범위 밖이면 제외
+                  }
+                  
+                  // meetLocations가 없으면 기본 location 확인
+                  if (location != null) {
+                    final distance = Geolocator.distanceBetween(
+                      locationProvider.filterLatitude!,
+                      locationProvider.filterLongitude!,
+                      location.latitude,
+                      location.longitude,
+                    );
+                    return distance <= locationProvider.searchRadius;
+                  }
+                  
+                  return false; // 위치 정보가 없으면 제외
+                }).toList();
+              }
+              
+              final products = docs.map((doc) {
                 final data = doc.data() as Map<String, dynamic>;
                 return _firestoreDocToProduct(doc.id, data, viewerUid);
               }).toList();
@@ -1224,9 +1327,48 @@ class _HomePageState extends State<HomePage> {
         }
         
         // 로컬 모드
-        final products = LocalAppRepository.instance
-            .getProducts(viewerUid: viewerUid)
-            .toList();
+        var listings = LocalAppRepository.instance.getAllListings();
+        
+        // 위치 필터링이 활성화된 경우 meetLocations를 확인하여 필터링
+        if (locationProvider.isLocationFilterEnabled &&
+            locationProvider.filterLatitude != null &&
+            locationProvider.filterLongitude != null) {
+          listings = listings.where((listing) {
+            // meetLocations가 있으면 모든 위치를 확인
+            if (listing.meetLocations.isNotEmpty) {
+              for (final loc in listing.meetLocations) {
+                final distance = Geolocator.distanceBetween(
+                  locationProvider.filterLatitude!,
+                  locationProvider.filterLongitude!,
+                  loc.latitude,
+                  loc.longitude,
+                );
+                if (distance <= locationProvider.searchRadius) {
+                  return true; // 하나라도 범위 내에 있으면 포함
+                }
+              }
+              return false; // 모든 위치가 범위 밖이면 제외
+            }
+            
+            // meetLocations가 없으면 기본 location 확인
+            final distance = Geolocator.distanceBetween(
+              locationProvider.filterLatitude!,
+              locationProvider.filterLongitude!,
+              listing.location.latitude,
+              listing.location.longitude,
+            );
+            return distance <= locationProvider.searchRadius;
+          }).toList();
+        }
+        
+        // 필터링된 listings를 Product로 변환
+        final products = listings.map((listing) {
+          return LocalAppRepository.instance.getProductById(
+            listing.id,
+            viewerUid: viewerUid,
+          )!;
+        }).toList();
+        
         return _buildProductGridView(products);
       },
     );
@@ -1246,25 +1388,9 @@ class _HomePageState extends State<HomePage> {
     }).toList();
 
     // 위치 필터링 적용 (현재 위치 또는 학교 주변)
-    final locationProvider = context.read<LocationProvider>();
-    if (locationProvider.isLocationFilterEnabled &&
-        locationProvider.filterLatitude != null &&
-        locationProvider.filterLongitude != null) {
-      allProducts = allProducts.where((productMap) {
-        final product = productMap['product'] as Product;
-        // Product의 x, y가 유효한 경우에만 거리 계산
-        if (product.x == 0.0 && product.y == 0.0) {
-          return false; // 위치 정보가 없는 상품은 제외
-        }
-        final distance = Geolocator.distanceBetween(
-          locationProvider.filterLatitude!,
-          locationProvider.filterLongitude!,
-          product.x,
-          product.y,
-        );
-        return distance <= locationProvider.searchRadius;
-      }).toList();
-    }
+    // 주의: _buildProductGridView는 이미 필터링된 Product 리스트를 받으므로
+    // 여기서는 추가 필터링을 하지 않습니다.
+    // 위치 필터링은 _buildProductList에서 Firestore 문서 단계에서 수행됩니다.
 
     // 선택된 카테고리에 따라 필터링
     final filteredProducts = _selectedCategory == null
