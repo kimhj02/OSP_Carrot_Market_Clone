@@ -53,16 +53,13 @@ class ChatMessage {
 
   factory ChatMessage.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
-    // readBy 필드가 있으면 사용, 없으면 isRead 기반으로 추론
-    Set<String> readBySet;
-    if (data['readBy'] != null) {
-      readBySet = Set<String>.from(data['readBy'] as List? ?? []);
-    } else {
-      // 기존 isRead 필드가 있으면 senderId를 readBy에 추가 (하위 호환성)
-      readBySet = (data['isRead'] as bool? ?? false) 
-          ? {data['senderId'] as String? ?? ''}
-          : <String>{};
-    }
+    // readBy 필드가 있으면 사용, 없으면 빈 집합으로 설정
+    // 참고: isRead 기반으로 추론하지 않는 이유는 isRead가 true일 때
+    // 보낸 사람이 읽은 것으로 오해할 수 있기 때문입니다.
+    // 메시지는 보통 보낸 사람이 아닌 다른 참여자가 읽었을 때 '읽음'으로 표시됩니다.
+    final readBySet = data['readBy'] != null
+        ? Set<String>.from(data['readBy'] as List? ?? [])
+        : <String>{};
     
     // 디버깅: 메시지 생성 시 readBy 확인
     final senderId = data['senderId'] ?? '';
