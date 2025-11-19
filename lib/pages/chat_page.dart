@@ -195,22 +195,21 @@ class _ChatPageState extends State<ChatPage> {
 
         final batch = FirebaseFirestore.instance.batch();
 
-        // 읽지 않은 메시지를 읽음으로 표시 (readBy에 현재 사용자 추가)
+        // 읽지 않은 메시지를 읽음으로 표시 (readBy에 현재 사용자 원자적으로 추가)
+        // FieldValue.arrayUnion을 사용하여 race condition 방지
         for (var doc in unreadMessages) {
           final data = doc.data();
-          final readBy = List<String>.from(data['readBy'] ?? []);
           final senderId = data['senderId'] as String? ?? '';
-          debugPrint('📖 메시지 읽음 처리: messageId=${doc.id}, senderId=$senderId, 기존 readBy=$readBy');
-          if (!readBy.contains(_currentUserId)) {
-            readBy.add(_currentUserId!);
-            debugPrint('📖 readBy 업데이트: $readBy');
-            batch.update(doc.reference, {
-              'readBy': readBy,
-              'isRead': readBy.length > 0, // 하위 호환성을 위해 유지
-            });
-          } else {
-            debugPrint('📖 이미 읽음 처리됨: readBy에 $_currentUserId 포함됨');
-          }
+          final existingReadBy = List<String>.from(data['readBy'] ?? []);
+          debugPrint('📖 메시지 읽음 처리: messageId=${doc.id}, senderId=$senderId, 기존 readBy=$existingReadBy');
+          
+          // FieldValue.arrayUnion을 사용하여 원자적으로 현재 사용자를 readBy에 추가
+          // 중복 추가를 방지하고 동시 읽기 시 race condition을 방지합니다
+          batch.update(doc.reference, {
+            'readBy': FieldValue.arrayUnion([_currentUserId!]),
+            'isRead': true, // readBy에 사용자가 추가되면 읽음으로 표시
+          });
+          debugPrint('📖 readBy에 $_currentUserId 원자적으로 추가됨');
         }
 
         if (unreadMessages.isNotEmpty) {
