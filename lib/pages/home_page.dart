@@ -1362,12 +1362,13 @@ class _HomePageState extends State<HomePage> {
         }
         
         // 필터링된 listings를 Product로 변환
-        final products = listings.map((listing) {
-          return LocalAppRepository.instance.getProductById(
-            listing.id,
-            viewerUid: viewerUid,
-          )!;
-        }).toList();
+        final products = listings
+            .map((listing) => LocalAppRepository.instance.getProductById(
+                  listing.id,
+                  viewerUid: viewerUid,
+                ))
+            .whereType<Product>()
+            .toList();
         
         return _buildProductGridView(products);
       },
