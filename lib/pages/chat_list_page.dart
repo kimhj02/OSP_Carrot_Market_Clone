@@ -348,6 +348,9 @@ class _ChatListPageState extends State<ChatListPage> {
           onTap: () {
             _navigateToChatPage(chatRoom, currentUserId);
           },
+          onDelete: () {
+            _deleteChatRoom(chatRoom, currentUserId);
+          },
         );
       },
     );
@@ -537,6 +540,110 @@ class _ChatListPageState extends State<ChatListPage> {
     });
   }
 
+  /// 채팅방 삭제
+  Future<void> _deleteChatRoom(ChatRoom chatRoom, String currentUserId) async {
+    // 삭제 확인 다이얼로그
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('채팅방 삭제'),
+          content: const Text('이 채팅방을 삭제하시겠습니까?\n삭제된 채팅방은 복구할 수 없습니다.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('취소'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.redAccent,
+              ),
+              child: const Text('삭제'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldDelete != true) {
+      return;
+    }
+
+    try {
+      if (AppConfig.useFirebase) {
+        // Firestore에서 채팅방 삭제
+        // 사용자별로 숨김 처리: participants에서 제거
+        final chatRoomRef = FirebaseFirestore.instance
+            .collection('chatRooms')
+            .doc(chatRoom.id);
+
+        final chatRoomDoc = await chatRoomRef.get();
+        if (chatRoomDoc.exists) {
+          final data = chatRoomDoc.data()!;
+          final participants = List<String>.from(data['participants'] ?? []);
+
+          // 현재 사용자를 participants에서 제거
+          if (participants.contains(currentUserId)) {
+            participants.remove(currentUserId);
+
+            // participants가 비어있으면 채팅방 완전 삭제
+            if (participants.isEmpty) {
+              // 모든 메시지도 삭제
+              final messagesSnapshot = await chatRoomRef
+                  .collection('messages')
+                  .get();
+              
+              final batch = FirebaseFirestore.instance.batch();
+              for (var doc in messagesSnapshot.docs) {
+                batch.delete(doc.reference);
+              }
+              batch.delete(chatRoomRef);
+              await batch.commit();
+            } else {
+              // 다른 참여자가 있으면 현재 사용자만 제거
+              await chatRoomRef.update({
+                'participants': participants,
+                'unreadCount.$currentUserId': FieldValue.delete(),
+              });
+            }
+          }
+        }
+      } else {
+        // 로컬 모드: 채팅방 삭제 기능은 아직 구현되지 않음
+        debugPrint('로컬 모드에서는 채팅방 삭제 기능을 지원하지 않습니다');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('로컬 모드에서는 채팅방 삭제 기능을 지원하지 않습니다'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+        return;
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('채팅방이 삭제되었습니다'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('채팅방 삭제 실패: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('채팅방 삭제에 실패했습니다: ${e.toString()}'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
   /// 빈 상태 위젯
   Widget _buildEmptyState() {
     String message = '채팅방이 없어요.';
@@ -569,11 +676,13 @@ class _ChatListItem extends StatelessWidget {
   final ChatRoom chatRoom;
   final String currentUserId;
   final VoidCallback onTap;
+  final VoidCallback onDelete;
 
   const _ChatListItem({
     required this.chatRoom,
     required this.currentUserId,
     required this.onTap,
+    required this.onDelete,
   });
 
   @override
@@ -584,6 +693,7 @@ class _ChatListItem extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
+      onLongPress: onDelete,
       splashColor: Colors.teal.withValues(alpha: 0.1),
       highlightColor: Colors.teal.withValues(alpha: 0.05),
       child: Container(

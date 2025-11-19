@@ -1028,6 +1028,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       'text': message,
       'createdAt': FieldValue.serverTimestamp(),
       'isRead': false,
+      'readBy': [senderId], // 보낸 사람은 자동으로 읽은 것으로 처리
     });
 
     /// 채팅방 정보 업데이트
