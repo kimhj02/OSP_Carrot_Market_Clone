@@ -243,11 +243,12 @@ class LocalAppRepository {
     final defaultRegion = _regions.values.first;
     final newUser = AppUserProfile(
       uid: uid,
-      displayName: email.split('@').first,
+      displayName: '', // 닉네임 설정 전에는 빈 문자열
       email: email,
       region: defaultRegion,
       universityId: _universities.keys.first,
       emailVerified: true,
+      hasSetNickname: false, // 닉네임 미설정 상태
       createdAt: DateTime.now(),
       photoUrl: null,
     );
@@ -610,6 +611,7 @@ class LocalAppRepository {
       region: regionGangnam,
       universityId: kumoh.code,
       emailVerified: true,
+      hasSetNickname: true, // 더미 데이터는 닉네임 설정 완료
       createdAt: now.subtract(const Duration(days: 45)),
       photoUrl:
           'https://cdn.pixabay.com/photo/2020/07/01/12/58/avatar-5357766_1280.png',
@@ -621,6 +623,7 @@ class LocalAppRepository {
       region: regionMapo,
       universityId: kumoh.code,
       emailVerified: true,
+      hasSetNickname: true, // 더미 데이터는 닉네임 설정 완료
       createdAt: now.subtract(const Duration(days: 20)),
       photoUrl:
           'https://cdn.pixabay.com/photo/2021/02/21/18/39/avatar-6039862_1280.png',
@@ -632,6 +635,7 @@ class LocalAppRepository {
       region: regionSeocho,
       universityId: kumoh.code,
       emailVerified: true,
+      hasSetNickname: true, // 더미 데이터는 닉네임 설정 완료
       createdAt: now.subtract(const Duration(days: 12)),
       photoUrl:
           'https://cdn.pixabay.com/photo/2016/03/31/19/14/avatar-1295401_1280.png',

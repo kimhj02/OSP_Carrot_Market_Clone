@@ -72,20 +72,20 @@ class EmailAuthProvider with ChangeNotifier {
               final regionData = data['region'] as Map<String, dynamic>?;
               _user = AppUserProfile(
                 uid: user.uid,
-                displayName: data['name'] as String? ?? user.displayName ?? (user.email ?? '사용자'),
+                displayName: data['displayName'] as String? ?? data['name'] as String? ?? '',
                 email: user.email ?? '',
                 region: regionData != null ? Region(
                   code: regionData['code'] as String? ?? '',
                   name: regionData['name'] as String? ?? '',
-                  level: (regionData['level'] as int?)?.toString() ?? 
-                         regionData['level'] as String? ?? 'unknown',
+                  level: regionData['level']?.toString() ?? 'unknown',
                   parent: regionData['parent'] as String?,
                 ) : _getDefaultRegionFromEmail(user.email ?? ''),
                 universityId: data['universityId'] as String? ?? 
                              _localRepo.getUniversityCodeByEmailDomain(user.email ?? '') ?? 
                              'UNKNOWN',
                 emailVerified: user.emailVerified,
-                createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? 
+                hasSetNickname: data['hasSetNickname'] as bool? ?? false,
+                createdAt: (data['createdAt'] as Timestamp?)?.toDate() ??
                            (user.metadata.creationTime ?? DateTime.now()),
                 photoUrl: user.photoURL ?? data['photoUrl'] as String?,
               );
@@ -212,7 +212,7 @@ class EmailAuthProvider with ChangeNotifier {
             await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
               'uid': user.uid,
               'email': email,
-              'name': user.displayName ?? email.split('@').first,
+              'name': '', // 닉네임 설정 전에는 빈 문자열
               'photoUrl': user.photoURL,
               'universityId': universityCode ?? 'UNKNOWN',
               'region': region != null ? {
@@ -222,6 +222,7 @@ class EmailAuthProvider with ChangeNotifier {
                 'parent': region.parent,
               } : null,
               'emailVerified': user.emailVerified,
+              'hasSetNickname': false, // 닉네임 미설정 상태
               'createdAt': FieldValue.serverTimestamp(),
               'updatedAt': FieldValue.serverTimestamp(),
             }, SetOptions(merge: true));
@@ -278,6 +279,107 @@ class EmailAuthProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// 닉네임 설정
+  Future<String?> updateNickname(String nickname) async {
+    if (_user == null) {
+      return '로그인된 사용자가 없습니다.';
+    }
+
+    setState(loading: true, resetError: true);
+    try {
+      if (AppConfig.useFirebase) {
+        /// Firestore에 닉네임 및 hasSetNickname 업데이트
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(_user!.uid)
+            .update({
+          'displayName': nickname,
+          'name': nickname,
+          'hasSetNickname': true,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        /// 로컬 사용자 정보 업데이트
+        _user = _user!.copyWith(
+          displayName: nickname,
+          hasSetNickname: true,
+        );
+        notifyListeners();
+        return null;
+      } else {
+        /// 로컬 모드에서는 로컬 저장소 업데이트
+        _user = _user!.copyWith(
+          displayName: nickname,
+          hasSetNickname: true,
+        );
+        notifyListeners();
+        return null;
+      }
+    } catch (e) {
+      final errorMsg = '닉네임 업데이트 중 오류가 발생했습니다: ${e.toString()}';
+      setState(errorMessage: errorMsg);
+      return errorMsg;
+    } finally {
+      setState(loading: false);
+    }
+  }
+
+  /// 사용자 정보 다시 로드
+  ///
+  /// 이메일 인증 완료 등으로 사용자 정보가 변경되었을 때 호출합니다.
+  Future<void> reloadUser() async {
+    if (AppConfig.useFirebase) {
+      final currentUser = _auth?.currentUser;
+      if (currentUser != null) {
+        try {
+          /// Firebase Auth 사용자 정보 새로고침
+          await currentUser.reload();
+          final refreshedUser = _auth?.currentUser;
+
+          if (refreshedUser != null) {
+            /// Firestore에서 최신 사용자 정보 가져오기
+            final userDoc = await FirebaseFirestore.instance
+                .collection('users')
+                .doc(refreshedUser.uid)
+                .get();
+
+            if (userDoc.exists) {
+              final data = userDoc.data()!;
+              final regionData = data['region'] as Map<String, dynamic>?;
+              _user = AppUserProfile(
+                uid: refreshedUser.uid,
+                displayName: data['displayName'] as String? ?? data['name'] as String? ?? '',
+                email: refreshedUser.email ?? '',
+                region: regionData != null ? Region(
+                  code: regionData['code'] as String? ?? '',
+                  name: regionData['name'] as String? ?? '',
+                  level: regionData['level']?.toString() ?? 'unknown',
+                  parent: regionData['parent'] as String?,
+                ) : _getDefaultRegionFromEmail(refreshedUser.email ?? ''),
+                universityId: data['universityId'] as String? ??
+                             _localRepo.getUniversityCodeByEmailDomain(refreshedUser.email ?? '') ??
+                             'UNKNOWN',
+                emailVerified: refreshedUser.emailVerified,
+                hasSetNickname: data['hasSetNickname'] as bool? ?? false,
+                createdAt: (data['createdAt'] as Timestamp?)?.toDate() ??
+                           (refreshedUser.metadata.creationTime ?? DateTime.now()),
+                photoUrl: refreshedUser.photoURL ?? data['photoUrl'] as String?,
+              );
+            } else {
+              _user = _mapFirebaseUser(refreshedUser);
+            }
+            notifyListeners();
+            debugPrint(' 사용자 정보 새로고침 완료: emailVerified=${_user?.emailVerified}');
+          }
+        } catch (e) {
+          debugPrint(' 사용자 정보 새로고침 실패: $e');
+        }
+      }
+    } else {
+      debugPrint('로컬 모드에서는 사용자 정보 새로고침이 필요하지 않습니다.');
+    }
+  }
+
   /// 상태를 업데이트하는 헬퍼 메서드
   void setState({
     bool? loading,
@@ -323,10 +425,8 @@ class EmailAuthProvider with ChangeNotifier {
   }
 
   AppUserProfile _mapFirebaseUser(User user) {
-    // Firestore에서 사용자 정보 가져오기
+    /// Firestore에서 사용자 정보 가져오기
     if (AppConfig.useFirebase) {
-      // 비동기적으로 Firestore에서 정보를 가져오지만,
-      // 동기적으로 반환해야 하므로 기본값 사용 후 업데이트
       final email = user.email ?? '';
       final universityCode = _localRepo.getUniversityCodeByEmailDomain(email);
       final region = universityCode != null

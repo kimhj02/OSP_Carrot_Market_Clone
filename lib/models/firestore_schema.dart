@@ -54,6 +54,7 @@ class AppUserProfile {
   final Region region;
   final String universityId;
   final bool emailVerified;
+  final bool hasSetNickname;
   final DateTime createdAt;
 
   const AppUserProfile({
@@ -64,6 +65,7 @@ class AppUserProfile {
     required this.universityId,
     required this.emailVerified,
     required this.createdAt,
+    this.hasSetNickname = false,
     this.photoUrl,
   });
 
@@ -73,6 +75,7 @@ class AppUserProfile {
     Region? region,
     String? universityId,
     bool? emailVerified,
+    bool? hasSetNickname,
     String? photoUrl,
   }) {
     return AppUserProfile(
@@ -82,6 +85,7 @@ class AppUserProfile {
       region: region ?? this.region,
       universityId: universityId ?? this.universityId,
       emailVerified: emailVerified ?? this.emailVerified,
+      hasSetNickname: hasSetNickname ?? this.hasSetNickname,
       createdAt: createdAt,
       photoUrl: photoUrl ?? this.photoUrl,
     );

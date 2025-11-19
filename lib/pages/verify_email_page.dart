@@ -36,7 +36,13 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
         await currentUser.reload();
         if (FirebaseAuth.instance.currentUser?.emailVerified == true) {
           timer.cancel();
-          debugPrint('✅ 이메일 인증 확인됨. AuthCheck가 화면을 전환합니다.');
+          debugPrint('✅ 이메일 인증 확인됨. 사용자 정보를 새로고침합니다.');
+
+          /// EmailAuthProvider의 사용자 정보를 새로고침하여 화면 전환 트리거
+          if (mounted) {
+            final authProvider = context.read<EmailAuthProvider>();
+            await authProvider.reloadUser();
+          }
         }
       });
     }
@@ -123,7 +129,7 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
 
   @override
   Widget build(BuildContext context) {
-    /// listen: false -> 여기서는 상태 변경으로 리빌드할 필요가 없음
+
     final authProvider = Provider.of<EmailAuthProvider>(context, listen: false);
     final String userEmail = authProvider.user?.email ?? '회원님의 이메일';
 

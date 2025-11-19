@@ -25,6 +25,7 @@ import 'package:flutter_sandbox/providers/location_provider.dart';
 import 'package:flutter_sandbox/pages/home_page.dart';
 import 'package:flutter_sandbox/pages/verify_email_page.dart';
 import 'package:flutter_sandbox/pages/email_auth_page.dart';
+import 'package:flutter_sandbox/pages/nickname_setup_page.dart';
 import 'package:flutter_sandbox/services/local_app_repository.dart';
 import 'package:flutter_sandbox/services/fcm_service.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -125,12 +126,18 @@ class AuthCheck extends StatelessWidget {
     /// 로그인 상태
     else {
       /// 메일 인증 여부 확인
-      if (user.emailVerified) {
-        /// 인증 완료 시 메인 홈 페이지
-        return const HomePage();
-      } else {
+      if (!user.emailVerified) {
         /// 인증 미완료 시 이메일 인증 대기 페이지
         return const VerifyEmailPage();
+      }
+      /// 닉네임 설정 여부 확인
+      if (!user.hasSetNickname) {
+        /// 닉네임 미설정 시 닉네임 설정 페이지
+        return const NicknameSetupPage();
+      }
+      /// 모든 단계 완료 시 메인 홈 페이지
+      else {
+        return const HomePage();
       }
     }
   }
