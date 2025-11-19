@@ -572,38 +572,47 @@ class _ChatListPageState extends State<ChatListPage> {
 
     try {
       if (AppConfig.useFirebase) {
-        // Firestore에서 채팅방 삭제
+        // Firestore에서 채팅방 삭제 (트랜잭션 사용으로 race condition 방지)
         // 사용자별로 숨김 처리: participants에서 제거
         final chatRoomRef = FirebaseFirestore.instance
             .collection('chatRooms')
             .doc(chatRoom.id);
 
-        final chatRoomDoc = await chatRoomRef.get();
-        if (chatRoomDoc.exists) {
+        await FirebaseFirestore.instance.runTransaction((transaction) async {
+          // 트랜잭션 내에서 읽기
+          final chatRoomDoc = await transaction.get(chatRoomRef);
+          
+          if (!chatRoomDoc.exists) {
+            return; // 채팅방이 이미 삭제됨
+          }
+
           final data = chatRoomDoc.data()!;
           final participants = List<String>.from(data['participants'] ?? []);
 
-          // 현재 사용자를 participants에서 제거
-          if (participants.contains(currentUserId)) {
-            participants.remove(currentUserId);
-
-            // participants가 비어있으면 채팅방 완전 삭제
-            // 참고: 메시지는 Firestore 보안 규칙으로 접근이 제한되므로
-            // 채팅방이 삭제되면 메시지에 접근할 수 없게 됩니다.
-            // 대량의 메시지를 클라이언트에서 삭제하는 것은 성능 문제를 일으킬 수 있으므로
-            // 채팅방만 삭제하고 메시지는 서버 측에서 정리하거나 보안 규칙으로 접근을 제한합니다.
-            if (participants.isEmpty) {
-              // 채팅방만 삭제 (메시지는 보안 규칙으로 접근 제한됨)
-              await chatRoomRef.delete();
-            } else {
-              // 다른 참여자가 있으면 현재 사용자만 제거
-              await chatRoomRef.update({
-                'participants': participants,
-                'unreadCount.$currentUserId': FieldValue.delete(),
-              });
-            }
+          // 현재 사용자가 participants에 있는지 확인
+          if (!participants.contains(currentUserId)) {
+            return; // 이미 제거됨
           }
-        }
+
+          // 현재 사용자를 participants에서 제거
+          participants.remove(currentUserId);
+
+          // participants가 비어있으면 채팅방 완전 삭제
+          // 참고: 메시지는 Firestore 보안 규칙으로 접근이 제한되므로
+          // 채팅방이 삭제되면 메시지에 접근할 수 없게 됩니다.
+          // 대량의 메시지를 클라이언트에서 삭제하는 것은 성능 문제를 일으킬 수 있으므로
+          // 채팅방만 삭제하고 메시지는 서버 측에서 정리하거나 보안 규칙으로 접근을 제한합니다.
+          if (participants.isEmpty) {
+            // 채팅방만 삭제 (메시지는 보안 규칙으로 접근 제한됨)
+            transaction.delete(chatRoomRef);
+          } else {
+            // 다른 참여자가 있으면 현재 사용자만 제거
+            transaction.update(chatRoomRef, {
+              'participants': participants,
+              'unreadCount.$currentUserId': FieldValue.delete(),
+            });
+          }
+        });
       } else {
         // 로컬 모드: 채팅방 삭제 기능은 아직 구현되지 않음
         debugPrint('로컬 모드에서는 채팅방 삭제 기능을 지원하지 않습니다');
