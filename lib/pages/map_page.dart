@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -48,10 +49,14 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _cameraIdleTimer?.cancel();
     super.dispose();
   }
 
   DateTime? _lastRefreshTime;
+  Timer? _cameraIdleTimer;
+  LatLng? _lastFilterLocation; // 마지막 필터 위치 추적
+  bool _userInteracted = false; // 사용자가 지도를 직접 조작했는지 추적
   
   @override
   void didChangeDependencies() {
@@ -86,9 +91,11 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   void _onMapCreated(GoogleMapController controller) {
     _mapController = controller;
+    // 초기화 시에는 사용자 조작이 아니므로 false로 설정
+    _userInteracted = false;
     // 지도가 생성된 후 현재 위치로 이동해야 하는 경우
     if (widget.moveToCurrentLocationOnInit) {
-      _moveToCurrentLocation(false);
+      _moveToCurrentLocation();
     } else {
       // LocationProvider의 필터 설정에 따라 지도 업데이트
       final locationProvider = context.read<LocationProvider>();
@@ -101,6 +108,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           locationProvider.filterLongitude!,
         );
         _currentPosition = center;
+        _lastFilterLocation = center; // 초기 필터 위치 저장
         _mapController?.animateCamera(
           CameraUpdate.newCameraPosition(
             CameraPosition(
@@ -149,30 +157,11 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     return true;
   }
 
-  Future<void> _moveToCurrentLocation(bool isBack) async {
+  Future<void> _moveToCurrentLocation() async {
     final hasPermission = await _handleLocationPermission();
     if (!hasPermission) return;
 
-  // 금오공대로 복귀하는 경우
-    if (isBack) {
-      setState(() {
-        _currentPosition = kumoh;
-      });
-
-      _mapController?.animateCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target: _currentPosition!,
-            zoom: 17,
-          ),
-        ),
-      );
-    final locationProvider = context.read<LocationProvider>();
-    _refreshListings(kumoh, locationProvider);
-    return;
-  }
-
-  // 현재 위치로 이동하는 경우
+    // 현재 위치로 이동하는 경우
     late Position position;
     try {
       position = await Geolocator.getCurrentPosition(
@@ -202,18 +191,38 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
     final locationProvider = context.read<LocationProvider>();
     _refreshListings(LatLng(position.latitude, position.longitude), locationProvider);
-   }
+  }
 
 
-  Future<void> _refreshListings(LatLng center, LocationProvider locationProvider) async {
+  Future<void> _refreshListings(LatLng center, LocationProvider locationProvider, {LatLngBounds? visibleBounds}) async {
+    // 최소 새로고침 간격 확인 (너무 자주 호출되는 것 방지)
+    final now = DateTime.now();
+    if (_lastRefreshTime != null && now.difference(_lastRefreshTime!).inMilliseconds < 300) {
+      debugPrint('⏭️ 새로고침 스킵: 마지막 새로고침 후 ${now.difference(_lastRefreshTime!).inMilliseconds}ms 경과');
+      return;
+    }
+    
     final pins = <_ListingPin>[];
     
+    // 지도 화면의 가시 영역 가져오기 (파라미터로 전달되지 않은 경우에만)
+    if (visibleBounds == null && _mapController != null) {
+      try {
+        visibleBounds = await _mapController!.getVisibleRegion();
+      } catch (e) {
+        debugPrint('⚠️ 가시 영역 가져오기 실패: $e');
+      }
+    }
+    
     // LocationProvider의 검색 반경 사용 (필터가 활성화된 경우)
+    // 하지만 지도에서는 화면에 보이는 모든 상품을 표시하도록 함
     final searchRadius = locationProvider.isLocationFilterEnabled
         ? locationProvider.searchRadius
         : _searchRadiusMeters;
     
     debugPrint('🗺️ 지도 상품 로드 시작: 중심(${center.latitude}, ${center.longitude}), 반경: ${searchRadius}m');
+    if (visibleBounds != null) {
+      debugPrint('🗺️ 지도 화면 범위: 북동(${visibleBounds.northeast.latitude}, ${visibleBounds.northeast.longitude}), 남서(${visibleBounds.southwest.latitude}, ${visibleBounds.southwest.longitude})');
+    }
     
     if (AppConfig.useFirebase) {
       // Firebase 모드: Firestore에서 상품 가져오기 (실시간 업데이트)
@@ -331,13 +340,24 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           
           for (var i = 0; i < points.length; i++) {
             final point = points[i];
-            final distance = Geolocator.distanceBetween(
-              center.latitude,
-              center.longitude,
-              point.latitude,
-              point.longitude,
-            );
-            if (distance <= searchRadius) {
+            final pointLatLng = LatLng(point.latitude, point.longitude);
+            
+            // 지도 화면 범위 내에 있는지 확인
+            bool isVisible = false;
+            if (visibleBounds != null) {
+              isVisible = visibleBounds.contains(pointLatLng);
+            } else {
+              // 가시 영역을 가져올 수 없으면 중심점 기준 거리로 확인
+              final distance = Geolocator.distanceBetween(
+                center.latitude,
+                center.longitude,
+                point.latitude,
+                point.longitude,
+              );
+              isVisible = distance <= searchRadius;
+            }
+            
+            if (isVisible) {
               pins.add(
                 _ListingPin(
                   listing: listing,
@@ -345,9 +365,21 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                   markerId: '${listing.id}_$i',
                 ),
               );
+              final distance = Geolocator.distanceBetween(
+                center.latitude,
+                center.longitude,
+                point.latitude,
+                point.longitude,
+              );
               debugPrint('📍 마커 추가: ${listing.title} (거리: ${distance.toStringAsFixed(0)}m)');
             } else {
-              debugPrint('❌ 거리 초과로 제외: ${listing.title} (거리: ${distance.toStringAsFixed(0)}m > ${searchRadius}m)');
+              final distance = Geolocator.distanceBetween(
+                center.latitude,
+                center.longitude,
+                point.latitude,
+                point.longitude,
+              );
+              debugPrint('❌ 화면 밖으로 제외: ${listing.title} (거리: ${distance.toStringAsFixed(0)}m)');
             }
           }
           } catch (e, stackTrace) {
@@ -373,13 +405,24 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             listing.meetLocations.isEmpty ? [listing.location] : listing.meetLocations;
         for (var i = 0; i < points.length; i++) {
           final point = points[i];
-          final distance = Geolocator.distanceBetween(
-            center.latitude,
-            center.longitude,
-            point.latitude,
-            point.longitude,
-          );
-          if (distance <= searchRadius) {
+          final pointLatLng = LatLng(point.latitude, point.longitude);
+          
+          // 지도 화면 범위 내에 있는지 확인
+          bool isVisible = false;
+          if (visibleBounds != null) {
+            isVisible = visibleBounds.contains(pointLatLng);
+          } else {
+            // 가시 영역을 가져올 수 없으면 중심점 기준 거리로 확인
+            final distance = Geolocator.distanceBetween(
+              center.latitude,
+              center.longitude,
+              point.latitude,
+              point.longitude,
+            );
+            isVisible = distance <= searchRadius;
+          }
+          
+          if (isVisible) {
             pins.add(
               _ListingPin(
                 listing: listing,
@@ -387,9 +430,21 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                 markerId: '${listing.id}_$i',
               ),
             );
+            final distance = Geolocator.distanceBetween(
+              center.latitude,
+              center.longitude,
+              point.latitude,
+              point.longitude,
+            );
             debugPrint('📍 마커 추가: ${listing.title} (거리: ${distance.toStringAsFixed(0)}m)');
           } else {
-            debugPrint('❌ 거리 초과로 제외: ${listing.title} (거리: ${distance.toStringAsFixed(0)}m > ${searchRadius}m)');
+            final distance = Geolocator.distanceBetween(
+              center.latitude,
+              center.longitude,
+              point.latitude,
+              point.longitude,
+            );
+            debugPrint('❌ 화면 밖으로 제외: ${listing.title} (거리: ${distance.toStringAsFixed(0)}m)');
           }
         }
       }
@@ -398,12 +453,14 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     }
     
     debugPrint('🔄 마커 업데이트: ${pins.length}개');
-    setState(() {
-      _pins
-        ..clear()
-        ..addAll(pins);
-      _lastRefreshTime = DateTime.now();
-    });
+    if (mounted) {
+      setState(() {
+        _pins
+          ..clear()
+          ..addAll(pins);
+        _lastRefreshTime = DateTime.now();
+      });
+    }
     await _preloadMarkerIcons();
     debugPrint('✅ 마커 아이콘 로드 완료');
   }
@@ -517,7 +574,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Consumer<LocationProvider>(
       builder: (context, locationProvider, child) {
-        // LocationProvider가 변경될 때마다 지도 업데이트
+        // LocationProvider 필터가 변경되었을 때만 지도 업데이트 (사용자 조작이 없을 때만)
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (locationProvider.isLocationFilterEnabled &&
               locationProvider.filterLatitude != null &&
@@ -526,7 +583,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
               locationProvider.filterLatitude!,
               locationProvider.filterLongitude!,
             );
-            if (_currentPosition != filterCenter) {
+            // 필터 위치가 변경되었고, 사용자가 직접 조작하지 않았을 때만 이동
+            if (_lastFilterLocation != filterCenter && !_userInteracted) {
+              _lastFilterLocation = filterCenter;
               _currentPosition = filterCenter;
               _mapController?.animateCamera(
                 CameraUpdate.newCameraPosition(
@@ -538,15 +597,30 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
               );
               _refreshListings(filterCenter, locationProvider);
             }
-          } else if (_pins.isEmpty && _mapController != null) {
-            // 마커가 없고 지도가 생성되었으면 초기 로드
-            final center = _currentPosition ?? kumoh;
-            _refreshListings(center, locationProvider);
+          } else {
+            // 필터가 비활성화되면 추적 초기화
+            _lastFilterLocation = null;
+            if (_pins.isEmpty && _mapController != null && !_userInteracted) {
+              // 마커가 없고 지도가 생성되었으면 초기 로드
+              final center = _currentPosition ?? kumoh;
+              _refreshListings(center, locationProvider);
+            }
           }
         });
         
         return Scaffold(
-          appBar: AppBar(title: const Text('내 주변 보기')),
+          appBar: AppBar(
+            title: const Text(
+              '동네 생활',
+              style: TextStyle(
+                color: Colors.black87,
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            backgroundColor: Colors.white,
+            elevation: 0,
+          ),
           body: _currentPosition == null
               ? const Center(child: CircularProgressIndicator())
               : GoogleMap(
@@ -554,40 +628,77 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                   initialCameraPosition:
                       CameraPosition(target: _currentPosition!, zoom: 17),
                   myLocationEnabled: true,
+                  myLocationButtonEnabled: false, // 기본 내 위치 버튼 비활성화 (FloatingActionButton 사용)
                   markers: _buildMarkers(),
+                  onCameraMoveStarted: () {
+                    // 사용자가 지도를 직접 조작하기 시작했음을 표시
+                    _userInteracted = true;
+                  },
+                  onCameraIdle: () {
+                    // 지도 이동이 끝났을 때 상품 새로고침 (debouncing)
+                    _cameraIdleTimer?.cancel();
+                        _cameraIdleTimer = Timer(const Duration(milliseconds: 500), () {
+                      if (_mapController != null && mounted) {
+                        _mapController!.getVisibleRegion().then((bounds) {
+                          if (mounted) {
+                            final center = LatLng(
+                              (bounds.northeast.latitude + bounds.southwest.latitude) / 2,
+                              (bounds.northeast.longitude + bounds.southwest.longitude) / 2,
+                            );
+                            _currentPosition = center;
+                            final locationProvider = context.read<LocationProvider>();
+                            _refreshListings(center, locationProvider, visibleBounds: bounds);
+                          }
+                        }).catchError((e) {
+                          debugPrint('⚠️ 가시 영역 가져오기 실패: $e');
+                          if (mounted && _currentPosition != null) {
+                            final locationProvider = context.read<LocationProvider>();
+                            _refreshListings(_currentPosition!, locationProvider);
+                          }
+                        });
+                      }
+                    });
+                  },
                 ),
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 80),
         child: Column(
-
             mainAxisSize: MainAxisSize.min,
             children:[
-
               FloatingActionButton(
-                onPressed: (){
-
-
-
-                  _moveToCurrentLocation(false);
+                heroTag: "myLocation",
+                onPressed: () async {
+                  // 타이머 취소
+                  _cameraIdleTimer?.cancel();
+                  // 버튼 클릭은 의도적인 이동이므로 사용자 조작 플래그 리셋
+                  _userInteracted = false;
+                  await _moveToCurrentLocation();
                 },
                 child: const Icon(Icons.my_location),
               ),
+              const SizedBox(height: 12),
               FloatingActionButton(
-                heroTag: "goBack",
-                onPressed: ()async{
-
+                heroTag: "schoolLocation",
+                onPressed: () {
+                  // 타이머 취소
+                  _cameraIdleTimer?.cancel();
+                  // 버튼 클릭은 의도적인 이동이므로 사용자 조작 플래그 리셋
+                  _userInteracted = false;
+                  // 학교로 이동
+                  setState(() {
+                    _currentPosition = kumoh;
+                  });
                   _mapController?.animateCamera(
                     CameraUpdate.newCameraPosition(
-                      const CameraPosition(
-                        target: LatLng(36.1461, 128.3939),
-                        zoom: 17,   // 👍 여기 확대값 적용
+                      CameraPosition(
+                        target: kumoh,
+                        zoom: 17,
                       ),
                     ),
                   );
-
-
-
-                  _moveToCurrentLocation(true);
+                  // 학교로 이동 후 상품 새로고침
+                  final locationProvider = context.read<LocationProvider>();
+                  _refreshListings(kumoh, locationProvider);
                 },
                 child: const Icon(Icons.school),
               ),

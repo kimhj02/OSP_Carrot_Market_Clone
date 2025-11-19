@@ -1761,6 +1761,11 @@ class Life extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(child: Text('동네생활 페이지'));
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('동네 생활'),
+      ),
+      body: Container(child: const Text('동네생활 페이지')),
+    );
   }
 }
