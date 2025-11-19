@@ -588,18 +588,13 @@ class _ChatListPageState extends State<ChatListPage> {
             participants.remove(currentUserId);
 
             // participants가 비어있으면 채팅방 완전 삭제
+            // 참고: 메시지는 Firestore 보안 규칙으로 접근이 제한되므로
+            // 채팅방이 삭제되면 메시지에 접근할 수 없게 됩니다.
+            // 대량의 메시지를 클라이언트에서 삭제하는 것은 성능 문제를 일으킬 수 있으므로
+            // 채팅방만 삭제하고 메시지는 서버 측에서 정리하거나 보안 규칙으로 접근을 제한합니다.
             if (participants.isEmpty) {
-              // 모든 메시지도 삭제
-              final messagesSnapshot = await chatRoomRef
-                  .collection('messages')
-                  .get();
-              
-              final batch = FirebaseFirestore.instance.batch();
-              for (var doc in messagesSnapshot.docs) {
-                batch.delete(doc.reference);
-              }
-              batch.delete(chatRoomRef);
-              await batch.commit();
+              // 채팅방만 삭제 (메시지는 보안 규칙으로 접근 제한됨)
+              await chatRoomRef.delete();
             } else {
               // 다른 참여자가 있으면 현재 사용자만 제거
               await chatRoomRef.update({
