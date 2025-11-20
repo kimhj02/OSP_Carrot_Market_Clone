@@ -73,7 +73,7 @@ class _NicknameSetupPageState extends State<NicknameSetupPage> {
 
   /// 닉네임 설정 완료 (트랜잭션으로 경쟁 조건 방지)
   Future<void> _submitNickname() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_formKey.currentState?.validate() != true) return;
 
     if (_isAvailable != true) {
       _showSnackBar('닉네임 중복 확인을 먼저 해주세요.', isSuccess: false);
