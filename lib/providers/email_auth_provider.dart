@@ -68,27 +68,7 @@ class EmailAuthProvider with ChangeNotifier {
                 .get();
             
             if (userDoc.exists) {
-              final data = userDoc.data()!;
-              final regionData = data['region'] as Map<String, dynamic>?;
-              _user = AppUserProfile(
-                uid: user.uid,
-                displayName: data['displayName'] as String? ?? data['name'] as String? ?? '',
-                email: user.email ?? '',
-                region: regionData != null ? Region(
-                  code: regionData['code'] as String? ?? '',
-                  name: regionData['name'] as String? ?? '',
-                  level: _parseRegionLevel(regionData['level']),
-                  parent: regionData['parent'] as String?,
-                ) : _getDefaultRegionFromEmail(user.email ?? ''),
-                universityId: data['universityId'] as String? ?? 
-                             _localRepo.getUniversityCodeByEmailDomain(user.email ?? '') ?? 
-                             'UNKNOWN',
-                emailVerified: user.emailVerified,
-                hasSetNickname: data['hasSetNickname'] as bool? ?? false,
-                createdAt: (data['createdAt'] as Timestamp?)?.toDate() ??
-                           (user.metadata.creationTime ?? DateTime.now()),
-                photoUrl: user.photoURL ?? data['photoUrl'] as String?,
-              );
+              _user = _createAppUserProfile(user, userDoc);
             } else {
               // Firestore에 정보가 없으면 이메일 도메인으로부터 추론
               _user = _mapFirebaseUser(user);
@@ -120,6 +100,32 @@ class EmailAuthProvider with ChangeNotifier {
     if (level is String) return level;
     if (level is int) return level.toString();
     return 'unknown';
+  }
+
+  /// Firestore의 DocumentSnapshot에서 AppUserProfile 객체를 생성하는 메서드
+  AppUserProfile _createAppUserProfile(User user, DocumentSnapshot userDoc) {
+    final data = userDoc.data()! as Map<String, dynamic>;
+    final regionData = data['region'] as Map<String, dynamic>?;
+
+    return AppUserProfile(
+      uid: user.uid,
+      displayName: data['displayName'] as String? ?? data['name'] as String? ?? '',
+      email: user.email ?? '',
+      region: regionData != null ? Region(
+        code: regionData['code'] as String? ?? '',
+        name: regionData['name'] as String? ?? '',
+        level: _parseRegionLevel(regionData['level']),
+        parent: regionData['parent'] as String?,
+      ) : _getDefaultRegionFromEmail(user.email ?? ''),
+      universityId: data['universityId'] as String? ??
+                   _localRepo.getUniversityCodeByEmailDomain(user.email ?? '') ??
+                   'UNKNOWN',
+      emailVerified: user.emailVerified,
+      hasSetNickname: data['hasSetNickname'] as bool? ?? false,
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ??
+                 (user.metadata.creationTime ?? DateTime.now()),
+      photoUrl: user.photoURL ?? data['photoUrl'] as String?,
+    );
   }
 
   /// 이메일로부터 기본 지역을 가져옵니다
@@ -352,27 +358,7 @@ class EmailAuthProvider with ChangeNotifier {
                 .get();
 
             if (userDoc.exists) {
-              final data = userDoc.data()!;
-              final regionData = data['region'] as Map<String, dynamic>?;
-              _user = AppUserProfile(
-                uid: refreshedUser.uid,
-                displayName: data['displayName'] as String? ?? data['name'] as String? ?? '',
-                email: refreshedUser.email ?? '',
-                region: regionData != null ? Region(
-                  code: regionData['code'] as String? ?? '',
-                  name: regionData['name'] as String? ?? '',
-                  level: regionData['level']?.toString() ?? 'unknown',
-                  parent: regionData['parent'] as String?,
-                ) : _getDefaultRegionFromEmail(refreshedUser.email ?? ''),
-                universityId: data['universityId'] as String? ??
-                             _localRepo.getUniversityCodeByEmailDomain(refreshedUser.email ?? '') ??
-                             'UNKNOWN',
-                emailVerified: refreshedUser.emailVerified,
-                hasSetNickname: data['hasSetNickname'] as bool? ?? false,
-                createdAt: (data['createdAt'] as Timestamp?)?.toDate() ??
-                           (refreshedUser.metadata.creationTime ?? DateTime.now()),
-                photoUrl: refreshedUser.photoURL ?? data['photoUrl'] as String?,
-              );
+              _user = _createAppUserProfile(refreshedUser, userDoc);
             } else {
               _user = _mapFirebaseUser(refreshedUser);
             }
