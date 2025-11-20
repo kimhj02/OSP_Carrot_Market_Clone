@@ -294,6 +294,9 @@ class EmailAuthProvider with ChangeNotifier {
   }
 
   /// 닉네임 설정
+  ///
+  /// Firestore 트랜잭션을 사용하여 닉네임 중복을 원자적으로 방지합니다.
+  /// nicknames 컬렉션에 닉네임을 문서 ID로 사용하여 uniqueness를 보장합니다.
   Future<String?> updateNickname(String nickname) async {
     if (_user == null) {
       return '로그인된 사용자가 없습니다.';
@@ -302,15 +305,39 @@ class EmailAuthProvider with ChangeNotifier {
     setState(loading: true, resetError: true);
     try {
       if (AppConfig.useFirebase) {
-        /// Firestore에 닉네임 및 hasSetNickname 업데이트
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(_user!.uid)
-            .update({
-          'displayName': nickname,
-          'name': nickname,
-          'hasSetNickname': true,
-          'updatedAt': FieldValue.serverTimestamp(),
+        /// 트랜잭션을 사용하여 닉네임 중복 방지 및 업데이트
+        await FirebaseFirestore.instance.runTransaction((transaction) async {
+          final nicknameRef = FirebaseFirestore.instance
+              .collection('nicknames')
+              .doc(nickname);
+          final nicknameDoc = await transaction.get(nicknameRef);
+
+          // 닉네임이 이미 존재하는지 확인
+          if (nicknameDoc.exists) {
+            final existingUid = nicknameDoc.data()?['uid'] as String?;
+            // 다른 사용자가 이미 사용 중인 닉네임인 경우
+            if (existingUid != _user!.uid) {
+              throw Exception('nickname-already-in-use');
+            }
+            // 현재 사용자가 이미 설정한 닉네임인 경우는 통과
+          }
+
+          // 닉네임 문서 생성 또는 업데이트로 선점
+          transaction.set(nicknameRef, {
+            'uid': _user!.uid,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+
+          // 사용자 프로필 업데이트
+          final userRef = FirebaseFirestore.instance
+              .collection('users')
+              .doc(_user!.uid);
+          transaction.update(userRef, {
+            'displayName': nickname,
+            'name': nickname,
+            'hasSetNickname': true,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
         });
 
         /// 로컬 사용자 정보 업데이트
@@ -330,7 +357,9 @@ class EmailAuthProvider with ChangeNotifier {
         return null;
       }
     } catch (e) {
-      final errorMsg = '닉네임 업데이트 중 오류가 발생했습니다: ${e.toString()}';
+      final errorMsg = e.toString().contains('nickname-already-in-use')
+          ? '이미 사용 중인 닉네임입니다.'
+          : '닉네임 업데이트 중 오류가 발생했습니다: ${e.toString()}';
       setState(errorMessage: errorMsg);
       return errorMsg;
     } finally {
