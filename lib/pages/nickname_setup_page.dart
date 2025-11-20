@@ -28,7 +28,7 @@ class _NicknameSetupPageState extends State<NicknameSetupPage> {
 
   /// 닉네임 중복 확인 (UI 피드백용)
   Future<void> _checkNickname() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_formKey.currentState?.validate() != true) return;
 
     final nickname = _nicknameController.text.trim();
 
