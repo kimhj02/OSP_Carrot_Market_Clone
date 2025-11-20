@@ -94,55 +94,28 @@ class _NicknameSetupPageState extends State<NicknameSetupPage> {
     });
 
     try {
-      if (AppConfig.useFirebase) {
-        // 트랜잭션으로 원자적 처리
-        await FirebaseFirestore.instance.runTransaction((transaction) async {
-          // 1. 저장 시점에 중복 체크
-          final querySnapshot = await FirebaseFirestore.instance
-              .collection('users')
-              .where('displayName', isEqualTo: nickname)
-              .limit(1)
-              .get();
+      final errorMessage = await authProvider.updateNickname(nickname);
 
-          if (querySnapshot.docs.isNotEmpty) {
-            throw Exception('이미 사용 중인 닉네임입니다.');
-          }
+      if (!mounted) return;
 
-          // 2. 중복이 없으면 사용자 프로필 업데이트
-          final userRef = FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid);
-
-          transaction.update(userRef, {
-            'displayName': nickname,
-            'hasSetNickname': true,
-            'updatedAt': FieldValue.serverTimestamp(),
+      if (errorMessage == null) {
+        _showSnackBar('닉네임이 설정되었습니다!', isSuccess: true);
+        /// AuthCheck가 자동으로 HomePage로 이동시킴
+      } else {
+        if (errorMessage.contains('이미 사용 중인')) {
+          _showSnackBar(errorMessage, isSuccess: false);
+          setState(() {
+            _isAvailable = false;
           });
-        });
-
-        // Provider 상태 새로고침
-        await authProvider.reloadUser();
-      } else {
-        // 로컬 모드
-        await authProvider.updateNickname(nickname);
+        } else {
+          _showSnackBar('닉네임 설정 중 오류가 발생했습니다: $errorMessage', isSuccess: false);
+        }
       }
-
-      if (!mounted) return;
-      _showSnackBar('닉네임이 설정되었습니다!', isSuccess: true);
-      /// AuthCheck가 자동으로 HomePage로 이동시킴
-    } on FirebaseException catch (e) {
-      if (!mounted) return;
-      _showSnackBar('닉네임 설정 중 오류가 발생했습니다: ${e.message}', isSuccess: false);
     } catch (e) {
+      // authProvider.updateNickname은 예외를 잡아서 오류 메시지를 반환하지만,
+      // 만약을 대비해 catch 블록을 유지합니다.
       if (!mounted) return;
-      if (e.toString().contains('이미 사용 중인')) {
-        _showSnackBar('이미 사용 중인 닉네임입니다.', isSuccess: false);
-        setState(() {
-          _isAvailable = false;
-        });
-      } else {
-        _showSnackBar('닉네임 설정 중 오류가 발생했습니다: ${e.toString()}', isSuccess: false);
-      }
+      _showSnackBar('예상치 못한 오류가 발생했습니다: ${e.toString()}', isSuccess: false);
     } finally {
       if (mounted) {
         setState(() {
@@ -154,7 +127,9 @@ class _NicknameSetupPageState extends State<NicknameSetupPage> {
 
   /// 스낵바 메시지 표시
   void _showSnackBar(String message, {required bool isSuccess}) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(

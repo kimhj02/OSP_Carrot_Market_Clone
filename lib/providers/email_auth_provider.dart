@@ -317,7 +317,7 @@ class EmailAuthProvider with ChangeNotifier {
             final existingUid = nicknameDoc.data()?['uid'] as String?;
             // 다른 사용자가 이미 사용 중인 닉네임인 경우
             if (existingUid != _user!.uid) {
-              throw Exception('이미 사용 중인 닉네임입니다.');
+              throw Exception('nickname-already-in-use');
             }
             // 현재 사용자가 이미 설정한 닉네임인 경우는 통과
           }
@@ -357,7 +357,7 @@ class EmailAuthProvider with ChangeNotifier {
         return null;
       }
     } catch (e) {
-      final errorMsg = e.toString().contains('이미 사용 중인 닉네임입니다')
+      final errorMsg = e.toString().contains('nickname-already-in-use')
           ? '이미 사용 중인 닉네임입니다.'
           : '닉네임 업데이트 중 오류가 발생했습니다: ${e.toString()}';
       setState(errorMessage: errorMsg);
