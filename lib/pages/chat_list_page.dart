@@ -30,6 +30,7 @@ enum ChatFilter {
   selling,  // 판매
   buying,   // 구매
   unread,   // 안 읽은 채팅방
+  groupBuy, // 같이사요
 }
 
 /// 채팅방 정렬 방식
@@ -219,6 +220,8 @@ class _ChatListPageState extends State<ChatListPage> {
                 _buildFilterButton('구매', ChatFilter.buying),
                 const SizedBox(width: 8),
                 _buildFilterButton('안 읽은 채팅방', ChatFilter.unread),
+                const SizedBox(width: 8),
+                _buildFilterButton('같이사요', ChatFilter.groupBuy),
               ],
             ),
           ),
@@ -235,6 +238,8 @@ class _ChatListPageState extends State<ChatListPage> {
   /// 필터 버튼 위젯
   Widget _buildFilterButton(String label, ChatFilter filter) {
     final isSelected = _selectedFilter == filter;
+    final isGroupBuy = filter == ChatFilter.groupBuy;
+    final buttonColor = isGroupBuy ? Colors.orange[500]! : Colors.teal;
 
     return GestureDetector(
       onTap: () {
@@ -245,9 +250,11 @@ class _ChatListPageState extends State<ChatListPage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.teal : Colors.white,
+          color: isSelected 
+              ? buttonColor 
+              : (isGroupBuy ? Colors.orange[500]!.withValues(alpha: 0.1) : Colors.white),
           border: Border.all(
-            color: isSelected ? Colors.teal : Colors.grey[300]!,
+            color: isSelected ? buttonColor : (isGroupBuy ? Colors.orange[500]! : Colors.grey[300]!),
             width: isSelected ? 1.5 : 1,
           ),
           borderRadius: BorderRadius.circular(20),
@@ -255,7 +262,9 @@ class _ChatListPageState extends State<ChatListPage> {
         child: Text(
           label,
           style: TextStyle(
-            color: isSelected ? Colors.white : Colors.black87,
+            color: isSelected 
+                ? Colors.white 
+                : (isGroupBuy ? Colors.orange[500]! : Colors.black87),
             fontSize: 14,
             fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
           ),
@@ -375,6 +384,11 @@ class _ChatListPageState extends State<ChatListPage> {
       case ChatFilter.unread:
         return chatRooms.where((room) =>
         room.getMyUnreadCount(currentUserId) > 0
+        ).toList();
+
+      case ChatFilter.groupBuy:
+        return chatRooms.where((room) =>
+            room.type == 'groupBuy'
         ).toList();
     }
   }
@@ -740,7 +754,7 @@ class _ChatListItem extends StatelessWidget {
                                   vertical: 2,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: Colors.orange,
+                                  color: Colors.orange[500],
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: const Text(
