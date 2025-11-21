@@ -7,6 +7,8 @@
 /// @version 1.0.0
 /// @since 2024-01-01
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 /// 상품 상태를 나타내는 enum
 enum ProductStatus {
   /// 판매중
@@ -126,6 +128,55 @@ class Product {
     this.meetLocationDetail,
   });
 
+  /// 안전한 Enum 파싱 헬퍼 메서드
+  static T _safeParseEnum<T>(
+    List<T> values,
+    dynamic value,
+    T defaultValue,
+  ) {
+    if (value is int && value >= 0 && value < values.length) {
+      return values[value];
+    }
+    return defaultValue;
+  }
+
+  /// Firestore DocumentSnapshot에서 Product 객체를 생성하는 팩토리 생성자
+  ///
+  /// 안전한 Enum 파싱을 통해 RangeError를 방지합니다.
+  factory Product.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    
+    return Product(
+      id: doc.id,
+      title: data['title'] as String? ?? '',
+      description: data['description'] as String? ?? '',
+      price: (data['price'] as num?)?.toInt() ?? 0,
+      imageUrls: List<String>.from(data['imageUrls'] as List? ?? []),
+      category: _safeParseEnum(
+        ProductCategory.values,
+        data['category'],
+        ProductCategory.etc,
+      ),
+      status: _safeParseEnum(
+        ProductStatus.values,
+        data['status'],
+        ProductStatus.onSale,
+      ),
+      sellerId: data['sellerId'] as String? ?? '',
+      sellerNickname: data['sellerName'] as String? ?? data['sellerNickname'] as String? ?? '',
+      sellerProfileImageUrl: data['sellerPhotoUrl'] as String? ?? data['sellerProfileImageUrl'] as String?,
+      location: data['location'] as String? ?? '',
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      updatedAt: (data['updatedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      viewCount: (data['viewCount'] as num?)?.toInt() ?? 0,
+      likeCount: (data['likeCount'] as num?)?.toInt() ?? 0,
+      isLiked: data['isLiked'] as bool? ?? false,
+      x: (data['x'] as num?)?.toDouble() ?? (data['latitude'] as num?)?.toDouble() ?? 0.0,
+      y: (data['y'] as num?)?.toDouble() ?? (data['longitude'] as num?)?.toDouble() ?? 0.0,
+      meetLocationDetail: data['meetLocationDetail'] as String?,
+    );
+  }
+
   /// JSON에서 Product 객체를 생성하는 팩토리 생성자
   factory Product.fromJson(Map<String, dynamic> json) {
     return Product(
@@ -134,8 +185,16 @@ class Product {
       description: json['description'] as String,
       price: json['price'] as int,
       imageUrls: List<String>.from(json['imageUrls'] as List),
-      category: ProductCategory.values[json['category'] as int],
-      status: ProductStatus.values[json['status'] as int],
+      category: _safeParseEnum(
+        ProductCategory.values,
+        json['category'],
+        ProductCategory.etc,
+      ),
+      status: _safeParseEnum(
+        ProductStatus.values,
+        json['status'],
+        ProductStatus.onSale,
+      ),
       sellerId: json['sellerId'] as String,
       sellerNickname: json['sellerNickname'] as String,
       sellerProfileImageUrl: json['sellerProfileImageUrl'] as String?,

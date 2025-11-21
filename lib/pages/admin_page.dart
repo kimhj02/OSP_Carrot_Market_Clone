@@ -779,27 +779,11 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
           .get();
       
       if (doc.exists && mounted) {
-        final data = doc.data()!;
-        // Product 객체를 생성하여 상세 페이지로 이동
-        // 실제 구현에서는 Product.fromFirestore 같은 메서드가 필요할 수 있습니다
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => ProductDetailPage(
-              product: Product(
-                id: doc.id,
-                title: data['title'] ?? '',
-                description: data['description'] ?? '',
-                price: data['price'] ?? 0,
-                imageUrls: List<String>.from(data['imageUrls'] ?? []),
-                category: ProductCategory.values[data['category'] ?? 0],
-                status: ProductStatus.values[data['status'] ?? 0],
-                sellerId: data['sellerId'] ?? '',
-                sellerNickname: data['sellerName'] ?? '',
-                location: data['location'] ?? '',
-                createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-                updatedAt: (data['updatedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-              ),
+              product: Product.fromFirestore(doc),
             ),
           ),
         );
