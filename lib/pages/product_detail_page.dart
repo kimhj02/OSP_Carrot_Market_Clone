@@ -40,6 +40,7 @@ enum _ProductMoreAction {
   edit,
   delete,
   changeStatus,
+  report
 }
 
 /// 상품 상세 정보를 표시하는 페이지
@@ -73,6 +74,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   bool _hasText = false;  /// 입력창의 텍스트 여부
   bool _isDeleting = false; /// 상품 삭제 진행 상태
   bool _hasIncrementedViewCount = false; /// 조회수 증가 여부
+  int _reported = 0;
 
   @override
   void initState() {
@@ -84,6 +86,11 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     _isLiked = widget.product.isLiked;
     _likeCount = widget.product.likeCount;
     _viewCount = widget.product.viewCount;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+          getReported();
+    });
+
+
 
     /// 조회수 증가
     _incrementViewCount();
@@ -174,12 +181,30 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                 case _ProductMoreAction.changeStatus:
                   _showStatusChangeDialog();
                   break;
+                case _ProductMoreAction.report:
+                  _reportCurrentPage();
+                  break;
               }
             },
             itemBuilder: (context) {
               final entries = <PopupMenuEntry<_ProductMoreAction>>[];
               // 권한 체크는 동기적으로 수행 (sellerId가 비어있으면 false)
               final canDelete = _canDeleteProductSync;
+              final canReport = !_isOwner;
+              if (canReport) {
+                entries.add(
+                  const PopupMenuItem(
+                    value: _ProductMoreAction.report,
+                    child: Row(
+                      children: [
+                        Icon(Icons.flag_outlined, color: Colors.redAccent),
+                        SizedBox(width: 12),
+                        Text("신고하기"),
+                      ],
+                    ),
+                  ),
+                );
+              }
               if (canDelete) {
                 entries.add(
                   PopupMenuItem<_ProductMoreAction>(
@@ -380,7 +405,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                           distanceText = ' • ${distance.toInt()}m';
                         }
                       }
-                      
+
                       return InkWell(
                         onTap: () {
                           // 지도에서 위치 보기
@@ -494,28 +519,28 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
               final imagePath = images[index];
               return _isAssetImage(imagePath)
                   ? Image.asset(
-                      imagePath,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        debugPrint('상세 페이지 이미지 로드 실패: $imagePath');
-                        return Container(
-                          color: Colors.grey[200],
-                          child: const Icon(Icons.broken_image,
-                              size: 64, color: Colors.grey),
-                        );
-                      },
-                    )
+                imagePath,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  debugPrint('상세 페이지 이미지 로드 실패: $imagePath');
+                  return Container(
+                    color: Colors.grey[200],
+                    child: const Icon(Icons.broken_image,
+                        size: 64, color: Colors.grey),
+                  );
+                },
+              )
                   : Image.network(
-                      imagePath,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          color: Colors.grey[200],
-                          child: const Icon(Icons.broken_image,
-                              size: 64, color: Colors.grey),
-                        );
-                      },
-                    );
+                imagePath,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    color: Colors.grey[200],
+                    child: const Icon(Icons.broken_image,
+                        size: 64, color: Colors.grey),
+                  );
+                },
+              );
             },
           ),
 
@@ -529,7 +554,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: List.generate(
                   images.length,
-                  (index) => Container(
+                      (index) => Container(
                     width: 8,
                     height: 8,
                     margin: const EdgeInsets.symmetric(horizontal: 4),
@@ -554,7 +579,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     final sellerNickname = widget.product.sellerNickname.isNotEmpty
         ? widget.product.sellerNickname
         : null;
-    
+
     if (sellerNickname == null && AppConfig.useFirebase) {
       // Firestore에서 사용자 정보 가져오기
       return FutureBuilder<DocumentSnapshot>(
@@ -565,27 +590,27 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         builder: (context, snapshot) {
           String displayName = '사용자';
           String? profileImageUrl = widget.product.sellerProfileImageUrl;
-          
+
           if (snapshot.hasData && snapshot.data!.exists) {
             final userData = snapshot.data!.data() as Map<String, dynamic>?;
-            displayName = userData?['name'] as String? ?? 
-                         userData?['displayName'] as String? ?? 
-                         '사용자';
-            profileImageUrl = profileImageUrl ?? 
-                             userData?['photoUrl'] as String?;
+            displayName = userData?['name'] as String? ??
+                userData?['displayName'] as String? ??
+                '사용자';
+            profileImageUrl = profileImageUrl ??
+                userData?['photoUrl'] as String?;
           }
-          
+
           return _buildSellerInfoRow(displayName, profileImageUrl);
         },
       );
     }
-    
+
     return _buildSellerInfoRow(
       sellerNickname ?? '사용자',
       widget.product.sellerProfileImageUrl,
     );
   }
-  
+
   /// 판매자 정보 행을 생성하는 헬퍼 위젯
   Widget _buildSellerInfoRow(String sellerName, String? profileImageUrl) {
     return Row(
@@ -786,7 +811,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
 
       // 같이사요 상품인지 확인
       final isGroupBuy = widget.product.category == ProductCategory.groupBuy;
-      
+
       String chatRoomId;
       if (AppConfig.useFirebase) {
         if (isGroupBuy) {
@@ -843,7 +868,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
 
   /// 기존 채팅방 찾기
   Future<String?> _findExistingChatRoom(String buyerId, String sellerId,
-                                        String productId,) async {
+      String productId,) async {
 
     final querySnapshot = await FirebaseFirestore.instance
         .collection('chatRooms')
@@ -864,10 +889,10 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
 
   /// 같이사요 그룹 채팅방 생성 또는 참여
   Future<String> _getOrCreateGroupChatRoom(
-    String buyerId,
-    String sellerId,
-    String productId,
-  ) async {
+      String buyerId,
+      String sellerId,
+      String productId,
+      ) async {
     // 기존 그룹 채팅방 찾기 (같은 상품에 대한 그룹 채팅방)
     final querySnapshot = await FirebaseFirestore.instance
         .collection('chatRooms')
@@ -885,7 +910,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       final participantNames = Map<String, String>.from(data['participantNames'] ?? {});
       final unreadCount = Map<String, int>.from(
         (data['unreadCount'] as Map<String, dynamic>?)?.map(
-          (key, value) => MapEntry(key, value as int),
+              (key, value) => MapEntry(key, value as int),
         ) ?? {},
       );
 
@@ -964,8 +989,8 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
 
     /// Firestore에 저장
     final docRef = await FirebaseFirestore.instance
-                  .collection('chatRooms')
-                  .add(chatRoomData);
+        .collection('chatRooms')
+        .add(chatRoomData);
 
     return docRef.id;
   }
@@ -1012,8 +1037,8 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
 
     /// Firestore에 저장
     final docRef = await FirebaseFirestore.instance
-                  .collection('chatRooms')
-                  .add(chatRoomData);
+        .collection('chatRooms')
+        .add(chatRoomData);
 
     return docRef.id;
   }
@@ -1065,7 +1090,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         builder: (context) => ProductEditPage(product: widget.product),
       ),
     );
-    
+
     if (result == true && mounted) {
       // 수정 완료 후 상품 정보 새로고침
       Navigator.pop(context, true);
@@ -1076,7 +1101,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   void _showStatusChangeDialog() {
     final currentStatus = widget.product.status;
     final availableStatuses = <ProductStatus>[];
-    
+
     // 현재 상태에 따라 변경 가능한 상태 목록 생성
     switch (currentStatus) {
       case ProductStatus.onSale:
@@ -1188,7 +1213,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
           '${widget.product.formattedPrice}\n'
           '${widget.product.description}\n'
           '위치: ${widget.product.location}';
-      
+
       await Share.share(
         shareText,
         subject: widget.product.title,
@@ -1203,7 +1228,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   Future<void> _toggleLike() async {
     final authProvider = context.read<EmailAuthProvider>();
     final uid = authProvider.user?.uid;
-    
+
     if (uid == null) {
       _showSnackBar('로그인이 필요합니다');
       return;
@@ -1212,7 +1237,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     // UI 즉시 업데이트 (낙관적 업데이트)
     final wasLiked = _isLiked;
     final newLikeCount = wasLiked ? _likeCount - 1 : _likeCount + 1;
-    
+
     setState(() {
       _isLiked = !wasLiked;
       _likeCount = newLikeCount;
@@ -1224,7 +1249,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         final productRef = FirebaseFirestore.instance
             .collection('products')
             .doc(widget.product.id);
-        
+
         final productDoc = await productRef.get();
         if (!productDoc.exists) {
           // 실패 시 롤백
@@ -1235,11 +1260,11 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
           _showSnackBar('상품을 찾을 수 없습니다');
           return;
         }
-        
+
         final data = productDoc.data()!;
         final likedUserIds = List<String>.from(data['likedUserIds'] ?? []);
         final isCurrentlyLiked = likedUserIds.contains(uid);
-        
+
         if (isCurrentlyLiked) {
           // 찜 취소
           likedUserIds.remove(uid);
@@ -1247,18 +1272,18 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
           // 찜 추가
           likedUserIds.add(uid);
         }
-        
+
         await productRef.update({
           'likedUserIds': likedUserIds,
           'likeCount': likedUserIds.length,
           'updatedAt': FieldValue.serverTimestamp(),
         });
-        
+
         // Firestore 업데이트 후 실제 값으로 동기화
         setState(() {
           _likeCount = likedUserIds.length;
         });
-        
+
         _showSnackBar(_isLiked ? '찜 목록에 추가했습니다' : '찜을 취소했습니다');
       } catch (e) {
         debugPrint('찜 기능 오류: $e');
@@ -1328,6 +1353,85 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     }
     return canDelete;
   }
+
+  bool get _isOwner {
+        if (AppConfig.useFirebase) {
+
+          final uid = FirebaseAuth.instance.currentUser?.uid;
+          return uid != null && uid == widget.product.sellerId;
+        } else {
+          final authProvider = context.read<EmailAuthProvider>();
+          final uid = authProvider.user?.uid;
+          return uid != null && uid == widget.product.sellerId;
+        }
+  }
+
+  void _reportCurrentPage() async {
+    final productId = widget.product.id;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('products')
+          .doc(productId)
+          .update({
+        'reported': FieldValue.increment(1),
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("신고가 접수되었습니다."),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint("신고 오류: $e");
+
+      // 만약 문서가 없거나 update가 실패할 경우 set으로 생성
+      try {
+        await FirebaseFirestore.instance
+            .collection('products')
+            .doc(productId)
+            .set({
+          'reported': 1,
+        }, SetOptions(merge: true));
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("신고가 접수되었습니다."),
+            ),
+          );
+        }
+      } catch (e2) {
+        debugPrint("신고 생성 오류: $e2");
+      }
+    }
+  }
+
+
+  void getReported() async {
+    final doc = await FirebaseFirestore.instance
+        .collection('products')
+        .doc(widget.product.id)
+        .get();
+
+    _reported = doc.data()?['reported'] ?? 0;
+
+    if (mounted && _reported >= 5) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("⚠️ 이 상품은 여러 번 신고되어 관리자 검토 중입니다."),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      });
+    }
+
+    setState(() {});
+  }
+
 
   /// 비동기적으로 권한 체크 (Firestore에서 sellerId 확인)
   Future<bool> _canDeleteProductAsync() async {
@@ -1449,8 +1553,3 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   }
 
 }
-
-
-
-
-
