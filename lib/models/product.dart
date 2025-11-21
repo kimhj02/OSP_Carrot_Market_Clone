@@ -194,28 +194,43 @@ class Product {
       x: location?.latitude ?? (data['x'] as num?)?.toDouble() ?? (data['latitude'] as num?)?.toDouble() ?? 0.0,
       y: location?.longitude ?? (data['y'] as num?)?.toDouble() ?? (data['longitude'] as num?)?.toDouble() ?? 0.0,
       meetLocationDetail: data['meetLocationDetail'] as String?,
-      groupBuy: _parseGroupBuyInfo(data['groupBuy']),
+      groupBuy: parseGroupBuyInfo(data['groupBuy']),
     );
   }
 
   /// GroupBuyInfo 파싱 헬퍼 메서드
-  static GroupBuyInfo? _parseGroupBuyInfo(dynamic groupBuyData) {
+  ///
+  /// Firestore나 JSON에서 받은 GroupBuyInfo 데이터를 안전하게 파싱합니다.
+  /// 유효하지 않은 데이터인 경우 null을 반환합니다.
+  static GroupBuyInfo? parseGroupBuyInfo(dynamic groupBuyData) {
     if (groupBuyData == null || groupBuyData is! Map<String, dynamic>) {
       return null;
     }
     
     try {
       final orderDeadline = groupBuyData['orderDeadline'];
+      DateTime parsedDeadline;
+      
+      if (orderDeadline is Timestamp) {
+        parsedDeadline = orderDeadline.toDate();
+      } else if (orderDeadline is String && orderDeadline.isNotEmpty) {
+        try {
+          parsedDeadline = DateTime.parse(orderDeadline);
+        } catch (e) {
+          // 유효하지 않은 날짜 문자열인 경우 null 반환
+          return null;
+        }
+      } else {
+        // orderDeadline이 없거나 유효하지 않은 타입인 경우 null 반환
+        return null;
+      }
+      
       return GroupBuyInfo(
         itemSummary: groupBuyData['itemSummary'] as String? ?? '',
         maxMembers: (groupBuyData['maxMembers'] as num?)?.toInt() ?? 0,
         currentMembers: (groupBuyData['currentMembers'] as num?)?.toInt() ?? 0,
         pricePerPerson: (groupBuyData['pricePerPerson'] as num?)?.toInt() ?? 0,
-        orderDeadline: orderDeadline is Timestamp
-            ? orderDeadline.toDate()
-            : (orderDeadline is String
-                ? DateTime.parse(orderDeadline)
-                : DateTime.now()),
+        orderDeadline: parsedDeadline,
         meetPlaceText: groupBuyData['meetPlaceText'] as String? ?? '',
       );
     } catch (e) {
@@ -251,7 +266,7 @@ class Product {
       likeCount: json['likeCount'] as int? ?? 0,
       isLiked: json['isLiked'] as bool? ?? false,
       meetLocationDetail: json['meetLocationDetail'] as String?,
-      groupBuy: _parseGroupBuyInfo(json['groupBuy']),
+      groupBuy: parseGroupBuyInfo(json['groupBuy']),
     );
   }
 

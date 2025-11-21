@@ -1286,33 +1286,8 @@ class _HomePageState extends State<HomePage> {
       x: location?.latitude ?? 0.0,
       y: location?.longitude ?? 0.0,
       meetLocationDetail: data['meetLocationDetail'] as String?,
-      groupBuy: _parseGroupBuyInfo(data['groupBuy']),
+      groupBuy: Product.parseGroupBuyInfo(data['groupBuy']),
     );
-  }
-
-  /// GroupBuyInfo 파싱 헬퍼 메서드
-  GroupBuyInfo? _parseGroupBuyInfo(dynamic groupBuyData) {
-    if (groupBuyData == null || groupBuyData is! Map<String, dynamic>) {
-      return null;
-    }
-    
-    try {
-      final orderDeadline = groupBuyData['orderDeadline'];
-      return GroupBuyInfo(
-        itemSummary: groupBuyData['itemSummary'] as String? ?? '',
-        maxMembers: (groupBuyData['maxMembers'] as num?)?.toInt() ?? 0,
-        currentMembers: (groupBuyData['currentMembers'] as num?)?.toInt() ?? 0,
-        pricePerPerson: (groupBuyData['pricePerPerson'] as num?)?.toInt() ?? 0,
-        orderDeadline: orderDeadline is Timestamp
-            ? orderDeadline.toDate()
-            : (orderDeadline is String
-                ? DateTime.parse(orderDeadline)
-                : DateTime.now()),
-        meetPlaceText: groupBuyData['meetPlaceText'] as String? ?? '',
-      );
-    } catch (e) {
-      return null;
-    }
   }
 
   /// 상품 목록을 생성하는 위젯
