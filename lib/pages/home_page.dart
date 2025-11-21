@@ -93,8 +93,8 @@ class _HomePageState extends State<HomePage> {
     final locationLabel =
         appUser != null ? _resolveLocationLabel(appUser) : '강남구 역삼동';
     // 로그인하지 않은 경우와 채팅(2), 내 정보(3) 탭에서는 AppBar 숨김
-    final isLoggedIn = appUser != null;
-    final shouldShowAppBar = isLoggedIn && IndexedStackState != 2 && IndexedStackState != 3;
+    final shouldShowAppBar =
+        isLoggedIn && IndexedStackState != 2 && IndexedStackState != 3;
     return Scaffold(
       backgroundColor: Colors.grey[50],
       // 금오 마켓 스타일의 앱바
