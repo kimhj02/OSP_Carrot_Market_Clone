@@ -1368,44 +1368,41 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
 
   void _reportCurrentPage() async {
     final productId = widget.product.id;
+    bool success = false;
 
     try {
+      // First, try to increment the 'reported' field.
       await FirebaseFirestore.instance
           .collection('products')
           .doc(productId)
-          .update({
-        'reported': FieldValue.increment(1),
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("신고가 접수되었습니다."),
-          ),
-        );
-      }
+          .update({'reported': FieldValue.increment(1)});
+      success = true;
     } catch (e) {
-      debugPrint("신고 오류: $e");
-
-      // 만약 문서가 없거나 update가 실패할 경우 set으로 생성
+      debugPrint("신고 update 오류: $e");
+      // If update fails (e.g., field doesn't exist), try to set it.
       try {
         await FirebaseFirestore.instance
             .collection('products')
             .doc(productId)
-            .set({
-          'reported': 1,
-        }, SetOptions(merge: true));
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("신고가 접수되었습니다."),
-            ),
-          );
-        }
+            .set({'reported': 1}, SetOptions(merge: true));
+        success = true;
       } catch (e2) {
-        debugPrint("신고 생성 오류: $e2");
+        debugPrint("신고 set 오류: $e2");
       }
+    }
+
+    if (!mounted) return;
+
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("신고가 접수되었습니다."),
+        ),
+      );
+      // Refresh the report count to show potential warnings immediately.
+      getReported();
+    } else {
+      _showSnackBar("신고 접수에 실패했습니다. 다시 시도해주세요.");
     }
   }
 
