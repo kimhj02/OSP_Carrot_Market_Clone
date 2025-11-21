@@ -1445,54 +1445,42 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
 
 
   void getReported() async {
+    int reportedCount = 0;
+    
     if (AppConfig.useFirebase) {
       try {
         final doc = await FirebaseFirestore.instance
             .collection('products')
             .doc(widget.product.id)
             .get();
-
-        _reported = doc.data()?['reported'] ?? 0;
-
-        if (mounted && _reported >= 5) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text("⚠️ 이 상품은 여러 번 신고되어 관리자 검토 중입니다."),
-                duration: Duration(seconds: 2),
-              ),
-            );
-          });
-        }
-
-        if (mounted) {
-          setState(() {});
-        }
+        reportedCount = doc.data()?['reported'] ?? 0;
       } catch (e) {
         debugPrint('신고 횟수 조회 오류: $e');
+        return;
       }
     } else {
-      // 로컬 모드 지원
+      // 로컬 모드: LocalAppRepository 사용
       try {
-        _reported = LocalAppRepository.instance.getReportedCount(widget.product.id);
-
-        if (mounted && _reported >= 5) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text("⚠️ 이 상품은 여러 번 신고되어 관리자 검토 중입니다."),
-                duration: Duration(seconds: 2),
-              ),
-            );
-          });
-        }
-
-        if (mounted) {
-          setState(() {});
-        }
+        reportedCount = LocalAppRepository.instance.getReportedCount(widget.product.id);
       } catch (e) {
         debugPrint('신고 횟수 조회 오류: $e');
+        return;
       }
+    }
+
+    _reported = reportedCount;
+
+    if (mounted && _reported >= 5) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("⚠️ 신고된 상품입니다"),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      });
     }
   }
 
