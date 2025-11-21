@@ -22,6 +22,8 @@ class LocalAppRepository {
   final Map<String, List<AppChatMessage>> _messages = {};
   final List<Ad> _ads = [];
   final Map<String, String> _passwords = {};
+  final Map<String, Set<String>> _reportedBy = {}; // 상품별 신고한 사용자 목록
+  final Map<String, int> _reportedCount = {}; // 상품별 신고 횟수
 
   AppUserProfile? _currentUser;
 
@@ -335,6 +337,35 @@ class LocalAppRepository {
       likedUserIds: updatedLikes,
       updatedAt: DateTime.now(),
     );
+  }
+
+  /// 상품 신고 기능
+  /// 
+  /// [listingId] 상품 ID
+  /// [userId] 신고한 사용자 ID
+  /// 
+  /// Returns: true if successful, false if already reported
+  bool reportProduct(String listingId, String userId) {
+    final listing = _listings[listingId];
+    if (listing == null) return false;
+
+    final reportedBySet = _reportedBy.putIfAbsent(listingId, () => <String>{});
+    
+    // 중복 신고 확인
+    if (reportedBySet.contains(userId)) {
+      return false;
+    }
+
+    // 신고 추가
+    reportedBySet.add(userId);
+    _reportedCount[listingId] = (_reportedCount[listingId] ?? 0) + 1;
+    
+    return true;
+  }
+
+  /// 상품의 신고 횟수 가져오기
+  int getReportedCount(String listingId) {
+    return _reportedCount[listingId] ?? 0;
   }
 
   Future<Listing> createListing({

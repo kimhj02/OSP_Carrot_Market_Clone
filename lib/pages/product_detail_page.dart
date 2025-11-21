@@ -1367,53 +1367,78 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   }
 
   void _reportCurrentPage() async {
+    // 로그인 확인
+    final uid = AppConfig.useFirebase 
+        ? FirebaseAuth.instance.currentUser?.uid
+        : context.read<EmailAuthProvider>().user?.uid;
+    
+    if (uid == null) {
+      _showSnackBar('로그인이 필요합니다');
+      return;
+    }
+
     final productId = widget.product.id;
-    bool success = false;
 
     try {
-      // First, try to increment the 'reported' field.
-      await FirebaseFirestore.instance
-          .collection('products')
-          .doc(productId)
-          .update({'reported': FieldValue.increment(1)});
-      success = true;
-    } catch (e) {
-      debugPrint("신고 update 오류: $e");
-      // If update fails (e.g., field doesn't exist), try to set it.
-      try {
+      if (AppConfig.useFirebase) {
+        final productRef = FirebaseFirestore.instance
+            .collection('products')
+            .doc(productId);
+        
+        final doc = await productRef.get();
+        final data = doc.data();
+        final reportedBy = List<String>.from(data?['reportedBy'] ?? []);
+        
+        // 중복 신고 확인
+        if (reportedBy.contains(uid)) {
+          _showSnackBar('이미 신고한 상품입니다');
+          return;
+        }
+        
+        reportedBy.add(uid);
+        
         await FirebaseFirestore.instance
             .collection('products')
             .doc(productId)
-            .set({'reported': 1}, SetOptions(merge: true));
-        success = true;
-      } catch (e2) {
-        debugPrint("신고 set 오류: $e2");
+            .set({
+          'reported': FieldValue.increment(1),
+          'reportedBy': reportedBy,
+        }, SetOptions(merge: true));
+      } else {
+        // 로컬 모드 지원
+        final success = LocalAppRepository.instance.reportProduct(productId, uid);
+        if (!success) {
+          _showSnackBar('이미 신고한 상품입니다');
+          return;
+        }
       }
-    }
-
-    if (!mounted) return;
-
-    if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("신고가 접수되었습니다."),
-        ),
-      );
-      // Refresh the report count to show potential warnings immediately.
-      getReported();
-    } else {
-      _showSnackBar("신고 접수에 실패했습니다. 다시 시도해주세요.");
+      
+      if (mounted) {
+        _showSnackBar('신고가 접수되었습니다');
+        // Refresh the report count to show potential warnings immediately.
+        getReported();
+      }
+    } catch (e) {
+      debugPrint('신고 오류: $e');
+      if (mounted) {
+        _showSnackBar('신고 처리 중 오류가 발생했습니다');
+      }
     }
   }
 
 
   void getReported() async {
-    final doc = await FirebaseFirestore.instance
-        .collection('products')
-        .doc(widget.product.id)
-        .get();
+    if (AppConfig.useFirebase) {
+      final doc = await FirebaseFirestore.instance
+          .collection('products')
+          .doc(widget.product.id)
+          .get();
 
-    _reported = doc.data()?['reported'] ?? 0;
+      _reported = doc.data()?['reported'] ?? 0;
+    } else {
+      // 로컬 모드 지원
+      _reported = LocalAppRepository.instance.getReportedCount(widget.product.id);
+    }
 
     if (mounted && _reported >= 5) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
