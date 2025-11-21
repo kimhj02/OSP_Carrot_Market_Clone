@@ -92,8 +92,9 @@ class _HomePageState extends State<HomePage> {
     final AppUserProfile? appUser = context.watch<EmailAuthProvider>().user;
     final locationLabel =
         appUser != null ? _resolveLocationLabel(appUser) : '강남구 역삼동';
-    // 채팅(2)과 내 정보(3) 탭에서는 AppBar 숨김
-    final shouldShowAppBar = IndexedStackState != 2 && IndexedStackState != 3;
+    // 로그인하지 않은 경우와 채팅(2), 내 정보(3) 탭에서는 AppBar 숨김
+    final isLoggedIn = appUser != null;
+    final shouldShowAppBar = isLoggedIn && IndexedStackState != 2 && IndexedStackState != 3;
     return Scaffold(
       backgroundColor: Colors.grey[50],
       // 금오 마켓 스타일의 앱바
@@ -232,7 +233,7 @@ class _HomePageState extends State<HomePage> {
 
               // 로그인 상태에 따른 조건부 UI 렌더링
               return !isLoggedIn
-                  ? _buildLoginScreen(loginProvider, context) // 로그인되지 않은 경우
+                  ? _buildLoginScreen(context) // 로그인되지 않은 경우
                   : Container(
                       color: Colors.grey[50],
                       child: Column(
@@ -742,120 +743,102 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  /// 금오 마켓 스타일의 로그인 화면을 생성하는 위젯
-  ///
-  /// Parameters:
-  /// - [loginProvider]: 카카오 로그인 Provider 인스턴스
+  /// 금오 마켓 스타일의 환영 화면을 생성하는 위젯
   ///
   /// Returns:
-  /// - [Widget]: 로그인 화면 위젯
-  Widget _buildLoginScreen(
-    KakaoLoginProvider loginProvider,
-    BuildContext context,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // 금오 마켓 로고
-          Container(
-            width: 80,
-            height: 80,
-            decoration: const BoxDecoration(
-              color: Colors.teal,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.local_grocery_store,
-              color: Colors.white,
-              size: 40,
-            ),
-          ),
-          const SizedBox(height: 32),
-
-          // 환영 메시지
-          const Text(
-            '금오 마켓에 오신 것을 환영합니다!',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Colors.black,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-
-          const Text(
-            '동네 이웃들과 안전하게 거래해보세요',
-            style: TextStyle(fontSize: 16, color: Colors.grey),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 48),
-
-          // 카카오 로그인 버튼
-          SizedBox(
-            width: double.infinity,
-            height: 56,
-            child: ElevatedButton(
-              onPressed: () async {
-                await loginProvider.login();
-                final isSuccess = loginProvider.user != null;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(isSuccess ? '카카오 로그인 성공' : '카카오 로그인 실패'),
-                    duration: const Duration(seconds: 1),
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.teal,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+  /// - [Widget]: 환영 화면 위젯
+  Widget _buildLoginScreen(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Spacer(),
+              // 금오 마켓 로고
+              Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  color: Colors.teal,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.teal.withValues(alpha: 0.3),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
                 ),
-                elevation: 0,
+                child: const Icon(
+                  Icons.local_grocery_store,
+                  color: Colors.white,
+                  size: 50,
+                ),
               ),
-              child: const Text(
-                '카카오로 시작하기',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
+              const SizedBox(height: 40),
 
-          // 이메일 로그인 버튼
-          SizedBox(
-            width: double.infinity,
-            height: 56,
-            child: OutlinedButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const EmailAuthPage(),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.email_outlined, color: Colors.black87),
-              label: const Text(
-                '이메일로 시작하기',
+              // 환영 메시지
+              const Text(
+                '금오 마켓에 오신 것을\n환영합니다!',
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 28,
                   fontWeight: FontWeight.bold,
                   color: Colors.black87,
+                  height: 1.4,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+
+              Text(
+                '동네 이웃들과 안전하게 거래해보세요',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey[600],
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const Spacer(),
+
+              // 이메일 로그인 버튼
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const EmailAuthPage(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.email_outlined, size: 22),
+                  label: const Text(
+                    '이메일로 시작하기',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.teal,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                  ),
                 ),
               ),
-              style: OutlinedButton.styleFrom(
-                backgroundColor: Colors.white,
-                side: BorderSide(color: Colors.grey[300]!),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-            ),
+              const SizedBox(height: 16),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

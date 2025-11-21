@@ -24,7 +24,6 @@ import 'package:flutter_sandbox/providers/ad_provider.dart';
 import 'package:flutter_sandbox/providers/location_provider.dart';
 import 'package:flutter_sandbox/pages/home_page.dart';
 import 'package:flutter_sandbox/pages/verify_email_page.dart';
-import 'package:flutter_sandbox/pages/email_auth_page.dart';
 import 'package:flutter_sandbox/pages/nickname_setup_page.dart';
 import 'package:flutter_sandbox/services/local_app_repository.dart';
 import 'package:flutter_sandbox/services/fcm_service.dart';
@@ -120,9 +119,9 @@ class AuthCheck extends StatelessWidget {
 
     final AppUserProfile? user = context.watch<EmailAuthProvider>().user;
 
-    /// 로그아웃 상태
+    /// 로그아웃 상태 - 환영 화면 표시
     if (user == null) {
-      return const EmailAuthPage();
+      return const HomePage();
     }
     /// 로그인 상태
     else {

@@ -67,7 +67,11 @@ class _EmailAuthPageState extends State<EmailAuthPage> {
         _passwordController.text,
       );
       if (errorMessage == null) {
-        _showSnackBar('로그인 성공!');
+        if (mounted) {
+          _showSnackBar('로그인 성공!');
+          // 로그인 성공 후 이전 화면으로 돌아가서 AuthCheck가 자동으로 화면 전환하도록 함
+          Navigator.of(context).pop();
+        }
       } else {
         _showSnackBar(errorMessage);
       }
