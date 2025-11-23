@@ -750,25 +750,77 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                TextButton.icon(
-                  onPressed: () => _viewProduct(context, reportedProduct.productId),
-                  icon: const Icon(Icons.visibility, size: 18),
-                  label: const Text('상품 보기'),
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      onPressed: () =>
+                          _viewProduct(context, reportedProduct.productId),
+                      icon: const Icon(Icons.visibility, size: 18),
+                      label: const Text(
+                        '상품 보기',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
                 ),
-                const SizedBox(width: 8),
-                TextButton.icon(
-                  onPressed: () => _clearReports(context, reportedProduct),
-                  icon: const Icon(Icons.clear_all, size: 18),
-                  label: const Text('신고 해제'),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      onPressed: () =>
+                          _clearReports(context, reportedProduct),
+                      icon: const Icon(Icons.clear_all, size: 18),
+                      label: const Text(
+                        '신고 해제',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
                 ),
-                const SizedBox(width: 8),
-                TextButton.icon(
-                  onPressed: () => _deleteProduct(context, reportedProduct),
-                  icon: const Icon(Icons.delete, size: 18, color: Colors.red),
-                  label: const Text('상품 삭제', style: TextStyle(color: Colors.red)),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                        foregroundColor: Colors.red,
+                      ),
+                      onPressed: () =>
+                          _deleteProduct(context, reportedProduct),
+                      icon: const Icon(Icons.delete, size: 18, color: Colors.red),
+                      label: const Text(
+                        '상품 삭제',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: Colors.red),
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
+
           ],
         ),
       ),
