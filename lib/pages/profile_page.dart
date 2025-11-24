@@ -56,11 +56,21 @@ class _ProfilePageState extends State<ProfilePage>
 
   /// 관리자 여부를 확인하는 메서드
   Future<void> _checkAdminStatus() async {
-    final isAdmin = await _adminService.isAdmin();
-    if (mounted) {
-      setState(() {
-        _isAdmin = isAdmin;
-      });
+    try {
+      final isAdmin = await _adminService.isAdmin();
+      if (mounted) {
+        setState(() {
+          _isAdmin = isAdmin;
+        });
+      }
+    } catch (e) {
+      // 예외 발생 시 일반 사용자로 설정하고 에러 로그 출력
+      debugPrint('관리자 권한 확인 중 오류 발생: $e');
+      if (mounted) {
+        setState(() {
+          _isAdmin = false;
+        });
+      }
     }
   }
 
