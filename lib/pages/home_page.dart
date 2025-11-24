@@ -782,7 +782,7 @@ class _HomePageState extends State<HomePage> {
 
               // 환영 메시지
               const Text(
-                '금오 마켓에 오신 것을\n환영합니다!',
+                '바로 마켓에 오신 것을\n환영합니다!',
                 style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.bold,

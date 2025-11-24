@@ -41,16 +41,37 @@ class _ProfilePageState extends State<ProfilePage>
   /// 상품 상태 탭 컨트롤러
   late TabController _tabController;
 
-  /// 관리자 페이지 접근을 위한 설정 아이콘 탭 횟수
-  int _settingsTapCount = 0;
-
   /// 관리자 서비스
   final AdminService _adminService = AdminService();
+
+  /// 관리자 여부 (null: 확인 중, true: 관리자, false: 일반 사용자)
+  bool? _isAdmin;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    _checkAdminStatus();
+  }
+
+  /// 관리자 여부를 확인하는 메서드
+  Future<void> _checkAdminStatus() async {
+    try {
+      final isAdmin = await _adminService.isAdmin();
+      if (mounted) {
+        setState(() {
+          _isAdmin = isAdmin;
+        });
+      }
+    } catch (e) {
+      // 예외 발생 시 일반 사용자로 설정하고 에러 로그 출력
+      debugPrint('관리자 권한 확인 중 오류 발생: $e');
+      if (mounted) {
+        setState(() {
+          _isAdmin = false;
+        });
+      }
+    }
   }
 
   @override
@@ -179,41 +200,19 @@ class _ProfilePageState extends State<ProfilePage>
             ),
           ),
           const Spacer(),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined, color: Colors.black87, size: 28),
-            iconSize: 28,
-            onPressed: () async {
-              _settingsTapCount++;
-              if (_settingsTapCount >= 10) {
-                _settingsTapCount = 0;
-                final isAdmin = await _adminService.isAdmin();
-                if (isAdmin && mounted) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const AdminPage()),
-                  );
-                } else {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('관리자 권한이 없습니다'),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
-                  }
-                }
-              } else {
-                // 3초 후 탭 횟수 리셋
-                Future.delayed(const Duration(seconds: 3), () {
-                  if (mounted) {
-                    setState(() {
-                      _settingsTapCount = 0;
-                    });
-                  }
-                });
-              }
-            },
-          ),
+          // 관리자인 경우에만 톱니바퀴 아이콘 표시
+          if (_isAdmin == true)
+            IconButton(
+              icon: const Icon(Icons.settings_outlined, color: Colors.black87, size: 28),
+              iconSize: 28,
+              onPressed: () {
+                // 관리자는 한 번만 탭하면 관리자 페이지로 이동
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const AdminPage()),
+                );
+              },
+            ),
         ],
       ),
     );
@@ -270,13 +269,6 @@ class _ProfilePageState extends State<ProfilePage>
                 ? '카카오 로그인 • ID: ${kakaoUser?.id ?? ''}'
                 : '이메일 로그인 • ${emailUser?.email ?? ''}',
             style: const TextStyle(fontSize: 14, color: Colors.grey),
-          ),
-          const SizedBox(height: 4),
-
-          // 위치 정보
-          const Text(
-            '강남구 역삼동',
-            style: TextStyle(fontSize: 14, color: Colors.grey),
           ),
           const SizedBox(height: 20),
 

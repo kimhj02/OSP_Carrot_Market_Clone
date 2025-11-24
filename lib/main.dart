@@ -90,7 +90,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '금오 마켓', // 앱 제목
+      title: '바로 마켓', // 앱 제목
       debugShowCheckedModeBanner: false,
       locale: const Locale('ko', 'KR'),
       supportedLocales: const [
