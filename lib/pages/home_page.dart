@@ -61,10 +61,10 @@ class _HomePageState extends State<HomePage> {
 
   /// 이미지 URL이 asset 경로인지 확인하는 메서드
   bool _isAssetImage(String imageUrl) {
-    return imageUrl.contains('dummy_data') ||
-        imageUrl.startsWith('lib/') ||
+    return imageUrl.startsWith('lib/dummy_data/') ||
         imageUrl.startsWith('assets/');
   }
+
 
   @override
   void dispose() {
