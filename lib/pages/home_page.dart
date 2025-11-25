@@ -59,6 +59,13 @@ class _HomePageState extends State<HomePage> {
   OverlayEntry? _fabMenuOverlay;
   bool _isFabMenuOpen = false;
 
+  /// 이미지 URL이 asset 경로인지 확인하는 메서드
+  bool _isAssetImage(String imageUrl) {
+    return imageUrl.startsWith('lib/dummy_data/') ||
+        imageUrl.startsWith('assets/');
+  }
+
+
   @override
   void dispose() {
     _removeFabMenu(disposeOnly: true);
@@ -1251,19 +1258,30 @@ class _HomePageState extends State<HomePage> {
   }
 
   /// Firestore 문서를 Product로 변환
-  Product _firestoreDocToProduct(String docId, Map<String, dynamic> data, String? viewerUid) {
+  /// Firestore 문서를 Product로 변환
+  Product _firestoreDocToProduct(
+      String docId,
+      Map<String, dynamic> data,
+      String? viewerUid,
+      ) {
     final location = data['location'] as GeoPoint?;
     final region = data['region'] as Map<String, dynamic>?;
     final createdAt = data['createdAt'] as Timestamp?;
     final updatedAt = data['updatedAt'] as Timestamp?;
     final likedUserIds = List<String>.from(data['likedUserIds'] ?? []);
-    
+
+    // 🔥 이미지 필드 통합: imageUrls가 우선, 없으면 images 사용
+    final dynamic rawImages = data['imageUrls'] ?? data['images'] ?? [];
+    final List<String> imageUrls = rawImages is List
+        ? rawImages.map((e) => e.toString()).toList()
+        : <String>[];
+
     return Product(
       id: docId,
       title: data['title'] as String? ?? '',
       description: data['description'] as String? ?? '',
       price: (data['price'] as num?)?.toInt() ?? 0,
-      imageUrls: List<String>.from(data['images'] ?? []),
+      imageUrls: imageUrls,
       category: Product.safeParseEnum(
         ProductCategory.values,
         data['category'],
@@ -1289,6 +1307,7 @@ class _HomePageState extends State<HomePage> {
       groupBuy: Product.parseGroupBuyInfo(data['groupBuy']),
     );
   }
+
 
   /// 상품 목록을 생성하는 위젯
   Widget _buildProductList() {
@@ -1518,56 +1537,89 @@ class _HomePageState extends State<HomePage> {
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: product['image'] != null
-                            ? Image.asset(
-                                product['image']! as String,
-                                fit: BoxFit.cover,
-                                width: 60,
-                                height: 60,
-                                errorBuilder: (context, error, stackTrace) {
+                        child: () {
+                          final String? imagePath =
+                          product['image'] as String?;
+
+                          if (imagePath == null || imagePath.isEmpty) {
+                            return const Icon(
+                              Icons.image,
+                              color: Colors.grey,
+                            );
+                          }
+
+                          // 🔥 asset / network 구분
+                          if (_isAssetImage(imagePath)) {
+                            return Image.asset(
+                              imagePath,
+                              fit: BoxFit.cover,
+                              width: 60,
+                              height: 60,
+                              errorBuilder:
+                                  (context, error, stackTrace) {
+                                debugPrint(
+                                    '❌ 홈 Asset 이미지 로드 실패: $imagePath');
+                                debugPrint('❌ 에러: $error');
+                                debugPrint('❌ StackTrace: $stackTrace');
+                                return Container(
+                                  color: Colors.grey[300],
+                                  child: const Icon(
+                                    Icons.broken_image,
+                                    color: Colors.grey,
+                                  ),
+                                );
+                              },
+                              frameBuilder: (
+                                  context,
+                                  child,
+                                  frame,
+                                  wasSynchronouslyLoaded,
+                                  ) {
+                                if (frame != null ||
+                                    wasSynchronouslyLoaded) {
                                   debugPrint(
-                                    '❌ 홈 화면 이미지 로드 실패: ${product['image']}',
-                                  );
-                                  debugPrint('❌ 에러: $error');
-                                  debugPrint('❌ StackTrace: $stackTrace');
-                                  return Container(
-                                    color: Colors.grey[300],
-                                    child: const Icon(
-                                      Icons.broken_image,
-                                      color: Colors.grey,
+                                      '✅ 홈 Asset 이미지 로드 성공: $imagePath');
+                                  return child;
+                                }
+                                return Container(
+                                  color: Colors.grey[200],
+                                  child: const Center(
+                                    child: SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
                                     ),
-                                  );
-                                },
-                                frameBuilder:
-                                    (
-                                      context,
-                                      child,
-                                      frame,
-                                      wasSynchronouslyLoaded,
-                                    ) {
-                                      if (frame != null ||
-                                          wasSynchronouslyLoaded) {
-                                        debugPrint(
-                                          '✅ 홈 화면 이미지 로드 성공: ${product['image']}',
-                                        );
-                                        return child;
-                                      }
-                                      return Container(
-                                        color: Colors.grey[200],
-                                        child: const Center(
-                                          child: SizedBox(
-                                            width: 16,
-                                            height: 16,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    },
-                              )
-                            : const Icon(Icons.image, color: Colors.grey),
+                                  ),
+                                );
+                              },
+                            );
+                          } else {
+                            return Image.network(
+                              imagePath,
+                              fit: BoxFit.cover,
+                              width: 60,
+                              height: 60,
+                              errorBuilder:
+                                  (context, error, stackTrace) {
+                                debugPrint(
+                                    '❌ 홈 Network 이미지 로드 실패: $imagePath');
+                                debugPrint('❌ 에러: $error');
+                                debugPrint('❌ StackTrace: $stackTrace');
+                                return Container(
+                                  color: Colors.grey[300],
+                                  child: const Icon(
+                                    Icons.broken_image,
+                                    color: Colors.grey,
+                                  ),
+                                );
+                              },
+                            );
+                          }
+                        }(),
                       ),
+
                     ),
                     const SizedBox(width: 12),
 

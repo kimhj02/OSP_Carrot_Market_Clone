@@ -145,23 +145,46 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
     setState(() => _isSubmitting = true);
 
     try {
-      List<String> images = [];
-      
-      // Firebase 사용 시 이미지를 Firebase Storage에 업로드
+      // 1. URL로 입력한 이미지
+      final urlImages = _imageUrlsController.text
+          .split(',')
+          .map((url) => url.trim())
+          .where((url) => url.isNotEmpty)
+          .toList();
+
+      // 2. 갤러리에서 선택한 이미지가 1장도 없고, URL도 없으면 에러
+      if (_selectedImages.isEmpty && urlImages.isEmpty) {
+        _showMessage('이미지를 최소 1장 이상 등록해주세요.');
+        setState(() => _isSubmitting = false);
+        return;
+      }
+
+      // 3. 최종적으로 Firestore에 저장할 이미지 URL 목록
+      final List<String> images = [];
+
+      // Firebase 모드: 갤러리에서 선택한 이미지를 Firebase Storage에 업로드
       if (AppConfig.useFirebase && _selectedImages.isNotEmpty) {
         final storage = FirebaseStorage.instance;
-        final user = FirebaseAuth.instance.currentUser;
-        if (user == null) {
+        final authUser = FirebaseAuth.instance.currentUser;
+
+        if (authUser == null) {
           _showMessage('로그인이 필요합니다.');
           setState(() => _isSubmitting = false);
           return;
         }
-        
-        for (var imageFile in _selectedImages) {
+
+        for (final imageFile in _selectedImages) {
           try {
-            final fileName = '${DateTime.now().millisecondsSinceEpoch}_${path.basename(imageFile.path)}';
-            final ref = storage.ref().child('products/${user.uid}/$fileName');
-            await ref.putFile(File(imageFile.path));
+            final file = File(imageFile.path);
+            final fileName =
+                '${authUser.uid}_${DateTime.now().millisecondsSinceEpoch}${path.extension(file.path)}';
+
+            final ref = storage.ref().child('products/${authUser.uid}/$fileName');
+
+            // 파일 업로드
+            await ref.putFile(file);
+
+            // 다운로드 URL 가져오기
             final downloadUrl = await ref.getDownloadURL();
             images.add(downloadUrl);
           } catch (e) {
@@ -177,22 +200,26 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
         if (!await imagesDir.exists()) {
           await imagesDir.create(recursive: true);
         }
-        
-        for (var imageFile in _selectedImages) {
+
+        for (final imageFile in _selectedImages) {
           final fileName = path.basename(imageFile.path);
           final savedFile = File(path.join(imagesDir.path, fileName));
           await File(imageFile.path).copy(savedFile.path);
           images.add(savedFile.path);
         }
       }
-      
-      // URL로 입력한 이미지도 추가
-      final urlImages = _imageUrlsController.text
-          .split(',')
-          .map((url) => url.trim())
-          .where((url) => url.isNotEmpty)
-          .toList();
+
+      // URL로 입력한 이미지도 최종 리스트에 추가
       images.addAll(urlImages);
+
+      if (images.isEmpty) {
+        // 혹시라도 여기까지 왔는데 비었으면 방어
+        _showMessage('이미지 등록에 실패했습니다. 다시 시도해주세요.');
+        setState(() => _isSubmitting = false);
+        return;
+      }
+
+      // ===== 여기부터는 기존 로직 그대로 (groupInfo, Firestore 저장 등) =====
 
       GroupBuyInfo? groupInfo;
       if (_type == ListingType.groupBuy) {
@@ -206,17 +233,18 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
         }
         groupInfo = GroupBuyInfo(
           itemSummary: _groupItemController.text.trim(),
-          maxMembers: int.tryParse(_groupMaxMembersController.text.trim()) ?? 0,
+          maxMembers:
+          int.tryParse(_groupMaxMembersController.text.trim()) ?? 0,
           currentMembers:
-              int.tryParse(_groupCurrentMembersController.text.trim()) ?? 1,
+          int.tryParse(_groupCurrentMembersController.text.trim()) ?? 1,
           pricePerPerson:
-              int.tryParse(_groupPricePerPersonController.text.trim()) ?? 0,
-          orderDeadline: _orderDeadline ?? DateTime.now().add(const Duration(days: 1)),
+          int.tryParse(_groupPricePerPersonController.text.trim()) ?? 0,
+          orderDeadline:
+          _orderDeadline ?? DateTime.now().add(const Duration(days: 1)),
           meetPlaceText: _groupMeetTextController.text.trim(),
         );
       }
 
-      // Firebase 사용 시 Firestore에 저장
       if (AppConfig.useFirebase) {
         final firestore = FirebaseFirestore.instance;
         final authUser = FirebaseAuth.instance.currentUser;
@@ -226,23 +254,28 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
           return;
         }
 
-        // 선택한 첫 번째 위치에 따라 실제 지역을 결정
         final primaryLocation = _selectedLocations.first;
-        final actualRegion = LocalAppRepository.instance.getRegionByLocation(
-          primaryLocation.latitude,
-          primaryLocation.longitude,
-        ) ?? user.region;
+        final actualRegion =
+            LocalAppRepository.instance.getRegionByLocation(
+              primaryLocation.latitude,
+              primaryLocation.longitude,
+            ) ??
+                user.region;
 
         final productData = {
           'type': _type == ListingType.market ? 'market' : 'groupBuy',
           'title': _titleController.text.trim(),
           'price': int.tryParse(_priceController.text.trim()) ?? 0,
-          'location': GeoPoint(primaryLocation.latitude, primaryLocation.longitude),
-          'meetLocations': _selectedLocations.map((loc) => 
-            GeoPoint(loc.latitude, loc.longitude)).toList(),
-          'images': images.isEmpty ? ['lib/dummy_data/아이폰.jpeg'] : images,
+          'location': GeoPoint(
+              primaryLocation.latitude, primaryLocation.longitude),
+          'meetLocations': _selectedLocations
+              .map((loc) =>
+              GeoPoint(loc.latitude, loc.longitude))
+              .toList(),
+          // ★ 더미 이미지 제거: 그대로 images 사용
+          'images': images,
           'category': _category.index,
-          'status': 0, // ListingStatus.onSale
+          'status': 0,
           'region': {
             'code': actualRegion.code,
             'name': actualRegion.name,
@@ -250,26 +283,29 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
             'parent': actualRegion.parent,
           },
           'universityId': user.universityId,
-          'sellerUid': authUser.uid, // FirebaseAuth의 현재 사용자 UID 사용
+          'sellerUid': authUser.uid,
           'sellerName': user.displayName,
           'sellerPhotoUrl': user.photoUrl,
           'likeCount': 0,
           'viewCount': 0,
           'description': _descriptionController.text.trim(),
-          'meetLocationDetail': _meetLocationDetailController.text.trim().isNotEmpty
+          'meetLocationDetail':
+          _meetLocationDetailController.text.trim().isNotEmpty
               ? _meetLocationDetailController.text.trim()
               : null,
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
           'likedUserIds': [],
-          if (groupInfo != null) 'groupBuy': {
-            'itemSummary': groupInfo.itemSummary,
-            'maxMembers': groupInfo.maxMembers,
-            'currentMembers': groupInfo.currentMembers,
-            'pricePerPerson': groupInfo.pricePerPerson,
-            'orderDeadline': Timestamp.fromDate(groupInfo.orderDeadline),
-            'meetPlaceText': groupInfo.meetPlaceText,
-          },
+          if (groupInfo != null)
+            'groupBuy': {
+              'itemSummary': groupInfo.itemSummary,
+              'maxMembers': groupInfo.maxMembers,
+              'currentMembers': groupInfo.currentMembers,
+              'pricePerPerson': groupInfo.pricePerPerson,
+              'orderDeadline':
+              Timestamp.fromDate(groupInfo.orderDeadline),
+              'meetPlaceText': groupInfo.meetPlaceText,
+            },
         };
 
         await firestore.collection('products').add(productData);
@@ -281,24 +317,27 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
       } else {
         // 로컬 모드
         final primaryLocation = _selectedLocations.first;
-        final actualRegion = LocalAppRepository.instance.getRegionByLocation(
-          primaryLocation.latitude,
-          primaryLocation.longitude,
-        ) ?? user.region;
+        final actualRegion =
+            LocalAppRepository.instance.getRegionByLocation(
+              primaryLocation.latitude,
+              primaryLocation.longitude,
+            ) ??
+                user.region;
 
         await LocalAppRepository.instance.createListing(
           type: _type,
           title: _titleController.text.trim(),
           price: int.tryParse(_priceController.text.trim()) ?? 0,
           meetLocations: _selectedLocations,
-          images: images.isEmpty ? ['lib/dummy_data/아이폰.jpeg'] : images,
+          images: images, // ★ 더미 제거
           category: _category,
           region: actualRegion,
           universityId: user.universityId,
           seller: user,
           description: _descriptionController.text.trim(),
           groupBuy: groupInfo,
-          meetLocationDetail: _meetLocationDetailController.text.trim().isNotEmpty
+          meetLocationDetail:
+          _meetLocationDetailController.text.trim().isNotEmpty
               ? _meetLocationDetailController.text.trim()
               : null,
         );
@@ -316,6 +355,7 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
       }
     }
   }
+
 
   void _showMessage(String message, {bool isError = true}) {
     ScaffoldMessenger.of(context).showSnackBar(
