@@ -7,6 +7,10 @@
 /// @version 2.0.0
 /// @since 2024-01-01
 
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
@@ -17,6 +21,7 @@ import 'package:flutter_sandbox/providers/ad_provider.dart';
 import 'package:flutter_sandbox/config/app_config.dart';
 import 'package:flutter_sandbox/services/local_app_repository.dart';
 import 'package:flutter_sandbox/pages/product_detail_page.dart';
+
 
 /// 관리자 페이지 위젯
 class AdminPage extends StatefulWidget {
@@ -31,6 +36,23 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
   List<ReportedProduct> _reportedProducts = [];
   bool _loadingReports = false;
   String? _errorMessage;
+
+  /// 광고 이미지 Firebase Storage 업로드
+  Future<String> _uploadAdImage(File file) async {
+    if (!AppConfig.useFirebase) {
+      throw StateError('Firebase 모드에서만 이미지 업로드를 지원합니다.');
+    }
+
+    // ads/타임스탬프_파일명.png 같은 경로로 저장
+    final fileName =
+        'ads/${DateTime.now().millisecondsSinceEpoch}_${p.basename(file.path)}';
+
+    final ref = FirebaseStorage.instance.ref().child(fileName);
+
+    final uploadTask = await ref.putFile(file);
+    final downloadUrl = await uploadTask.ref.getDownloadURL();
+    return downloadUrl;
+  }
 
   @override
   void initState() {
@@ -100,6 +122,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
       ),
     );
   }
+
 
   /// 광고 관리 탭
   Widget _buildAdManagementTab() {
@@ -376,9 +399,55 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
   void _showAddAdDialog(BuildContext context) {
     final titleController = TextEditingController();
     final descriptionController = TextEditingController();
-    final imageUrlController = TextEditingController();
+    final imageUrlController = TextEditingController(); // 내부에서만 사용
     final linkUrlController = TextEditingController();
     bool isActive = true;
+
+    File? selectedImageFile;
+    bool uploadingImage = false;
+
+    Future<void> pickAndUploadImage(StateSetter setState) async {
+      try {
+        final picker = ImagePicker();
+        final picked = await picker.pickImage(
+          source: ImageSource.gallery,
+          imageQuality: 80,
+        );
+        if (picked == null) return;
+
+        if (kIsWeb) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('웹에서는 현재 갤러리 업로드를 지원하지 않습니다.')),
+            );
+          }
+          return;
+        }
+
+        setState(() {
+          uploadingImage = true;
+        });
+
+        final file = File(picked.path);
+        final url = await _uploadAdImage(file);
+
+        setState(() {
+          selectedImageFile = file;
+          imageUrlController.text = url; // Ad 에 전달할 URL
+          uploadingImage = false;
+        });
+      } catch (e) {
+        debugPrint('광고 이미지 업로드 오류: $e');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('이미지 업로드에 실패했습니다: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
 
     showDialog(
       context: context,
@@ -406,13 +475,89 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                   maxLines: 3,
                 ),
                 const SizedBox(height: 12),
-                TextField(
-                  controller: imageUrlController,
-                  decoration: const InputDecoration(
-                    labelText: '이미지 URL',
-                    border: OutlineInputBorder(),
+
+                // === 이미지 영역 ===
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '이미지',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[800],
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
+                const SizedBox(height: 8),
+                if (imageUrlController.text.isNotEmpty)
+                  Container(
+                    height: 120,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[200],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(
+                        imageUrlController.text,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            color: Colors.grey[300],
+                            child: const Icon(
+                              Icons.broken_image,
+                              color: Colors.grey,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: ElevatedButton.icon(
+                          onPressed:
+                          uploadingImage ? null : () => pickAndUploadImage(setState),
+                          icon: uploadingImage
+                              ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                              : const Icon(Icons.photo),
+                          label: Text(uploadingImage ? '업로드 중...' : '사진 선택'),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    if (imageUrlController.text.isNotEmpty)
+                      Flexible(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: TextButton(
+                            onPressed: uploadingImage
+                                ? null
+                                : () {
+                              setState(() {
+                                imageUrlController.clear();
+                                selectedImageFile = null;
+                              });
+                            },
+                            child: const Text('이미지 제거'),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+
+
                 const SizedBox(height: 12),
                 TextField(
                   controller: linkUrlController,
@@ -449,7 +594,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                   id: '',
                   title: titleController.text,
                   description: descriptionController.text,
-                  imageUrl: imageUrlController.text,
+                  imageUrl: imageUrlController.text, // 업로드된 URL
                   linkUrl: linkUrlController.text,
                   isActive: isActive,
                   createdAt: DateTime.now(),
@@ -479,13 +624,61 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
     );
   }
 
+
+
   /// 광고 수정 다이얼로그 표시
   void _showEditAdDialog(BuildContext context, Ad ad) {
     final titleController = TextEditingController(text: ad.title);
     final descriptionController = TextEditingController(text: ad.description);
-    final imageUrlController = TextEditingController(text: ad.imageUrl);
+    final imageUrlController = TextEditingController(text: ad.imageUrl); // 내부용
     final linkUrlController = TextEditingController(text: ad.linkUrl);
     bool isActive = ad.isActive;
+
+    File? selectedImageFile;
+    bool uploadingImage = false;
+
+    Future<void> pickAndUploadImage(StateSetter setState) async {
+      try {
+        final picker = ImagePicker();
+        final picked = await picker.pickImage(
+          source: ImageSource.gallery,
+          imageQuality: 80,
+        );
+        if (picked == null) return;
+
+        if (kIsWeb) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('웹에서는 현재 갤러리 업로드를 지원하지 않습니다.')),
+            );
+          }
+          return;
+        }
+
+        setState(() {
+          uploadingImage = true;
+        });
+
+        final file = File(picked.path);
+        final url = await _uploadAdImage(file);
+
+        setState(() {
+          selectedImageFile = file;
+          imageUrlController.text = url; // 새 URL
+          uploadingImage = false;
+        });
+      } catch (e) {
+        debugPrint('광고 이미지 업로드 오류: $e');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('이미지 업로드에 실패했습니다: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
 
     showDialog(
       context: context,
@@ -513,13 +706,89 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                   maxLines: 3,
                 ),
                 const SizedBox(height: 12),
-                TextField(
-                  controller: imageUrlController,
-                  decoration: const InputDecoration(
-                    labelText: '이미지 URL',
-                    border: OutlineInputBorder(),
+
+                // === 이미지 영역 ===
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '이미지',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[800],
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
+                const SizedBox(height: 8),
+                if (imageUrlController.text.isNotEmpty)
+                  Container(
+                    height: 120,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[200],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(
+                        imageUrlController.text,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            color: Colors.grey[300],
+                            child: const Icon(
+                              Icons.broken_image,
+                              color: Colors.grey,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: ElevatedButton.icon(
+                          onPressed:
+                          uploadingImage ? null : () => pickAndUploadImage(setState),
+                          icon: uploadingImage
+                              ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                              : const Icon(Icons.photo),
+                          label: Text(uploadingImage ? '업로드 중...' : '사진 선택'),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    if (imageUrlController.text.isNotEmpty)
+                      Flexible(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: TextButton(
+                            onPressed: uploadingImage
+                                ? null
+                                : () {
+                              setState(() {
+                                imageUrlController.clear();
+                                selectedImageFile = null;
+                              });
+                            },
+                            child: const Text('이미지 제거'),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+
+
                 const SizedBox(height: 12),
                 TextField(
                   controller: linkUrlController,
@@ -555,7 +824,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                 final updatedAd = ad.copyWith(
                   title: titleController.text,
                   description: descriptionController.text,
-                  imageUrl: imageUrlController.text,
+                  imageUrl: imageUrlController.text, // 최종 URL
                   linkUrl: linkUrlController.text,
                   isActive: isActive,
                   updatedAt: DateTime.now(),
@@ -583,6 +852,8 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
       ),
     );
   }
+
+
 
   /// 광고 삭제 확인 다이얼로그 표시
   void _showDeleteConfirmDialog(
