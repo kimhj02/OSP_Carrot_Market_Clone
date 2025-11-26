@@ -503,7 +503,14 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
                   helperText: '지도에서 선택한 위치 외에 상세한 거래 장소를 입력해주세요',
                 ),
                 maxLines: 2,
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return '상세 거래 위치를 입력해주세요.';
+                  }
+                  return null;
+                },
               ),
+
               const SizedBox(height: 16),
               if (_type == ListingType.groupBuy) _buildGroupBuyFields(),
               const SizedBox(height: 24),
