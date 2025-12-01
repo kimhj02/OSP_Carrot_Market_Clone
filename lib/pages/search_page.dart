@@ -241,7 +241,7 @@ class _SearchPageState extends State<SearchPage> {
       ),
       title: Text(product.title),
       subtitle: Text(
-        '${product.formattedPrice} · ${product.location}',
+        '${product.formattedPrice} · ${product.meetLocationDetail?.isNotEmpty == true ? product.meetLocationDetail! : product.location}',
       ),
       trailing: Text(
         product.statusText,
