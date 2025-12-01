@@ -29,7 +29,6 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
   final _titleController = TextEditingController();
   final _priceController = TextEditingController();
   final _descriptionController = TextEditingController();
-  final _imageUrlsController = TextEditingController();
   final ImagePicker _imagePicker = ImagePicker();
   List<XFile> _selectedImages = [];
   final _groupItemController = TextEditingController();
@@ -51,7 +50,6 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
     _titleController.dispose();
     _priceController.dispose();
     _descriptionController.dispose();
-    _imageUrlsController.dispose();
     _groupItemController.dispose();
     _groupMaxMembersController.dispose();
     _groupCurrentMembersController.dispose();
@@ -145,15 +143,8 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
     setState(() => _isSubmitting = true);
 
     try {
-      // 1. URL로 입력한 이미지
-      final urlImages = _imageUrlsController.text
-          .split(',')
-          .map((url) => url.trim())
-          .where((url) => url.isNotEmpty)
-          .toList();
-
-      // 2. 갤러리에서 선택한 이미지가 1장도 없고, URL도 없으면 에러
-      if (_selectedImages.isEmpty && urlImages.isEmpty) {
+      // 갤러리에서 선택한 이미지가 없으면 에러
+      if (_selectedImages.isEmpty) {
         _showMessage('이미지를 최소 1장 이상 등록해주세요.');
         setState(() => _isSubmitting = false);
         return;
@@ -208,9 +199,6 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
           images.add(savedFile.path);
         }
       }
-
-      // URL로 입력한 이미지도 최종 리스트에 추가
-      images.addAll(urlImages);
 
       if (images.isEmpty) {
         // 혹시라도 여기까지 왔는데 비었으면 방어
@@ -470,15 +458,6 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
                       ),
                     ),
                   ],
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: _imageUrlsController,
-                    decoration: const InputDecoration(
-                      labelText: '이미지 URL (선택사항, 쉼표로 구분)',
-                      border: OutlineInputBorder(),
-                      helperText: '또는 이미지 URL을 직접 입력할 수 있습니다',
-                    ),
-                  ),
                 ],
               ),
               const SizedBox(height: 16),
