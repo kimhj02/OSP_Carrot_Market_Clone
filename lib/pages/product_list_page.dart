@@ -40,6 +40,9 @@ class _ProductListPageState extends State<ProductListPage> {
       ) {
     List<Product> filtered = List<Product>.from(baseProducts);
 
+    // 판매 완료 상품 제외
+    filtered = filtered.where((product) => product.status != ProductStatus.sold).toList();
+
     // 위치 필터
     if (locationProvider != null &&
         locationProvider.isLocationFilterEnabled &&

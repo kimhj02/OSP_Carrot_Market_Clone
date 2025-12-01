@@ -1035,10 +1035,19 @@ class _HomePageState extends State<HomePage> {
               }).toList();
 
               // 위치 필터링이 활성화된 경우 meetLocations를 확인하여 필터링
-              var filteredCount = products.length;
+              // 판매 완료 상품 제외
+              var filteredCount = products.where((product) => product.status != ProductStatus.sold).length;
               if (locationProvider.isLocationFilterEnabled) {
                 filteredCount = snapshot.data!.docs
-                    .where((doc) => _isProductInRadius(doc, locationProvider))
+                    .where((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final status = Product.safeParseEnum(
+                        ProductStatus.values,
+                        data['status'],
+                        ProductStatus.onSale,
+                      );
+                      return _isProductInRadius(doc, locationProvider) && status != ProductStatus.sold;
+                    })
                     .length;
               }
 
@@ -1349,7 +1358,7 @@ class _HomePageState extends State<HomePage> {
               final products = docs.map((doc) {
                 final data = doc.data() as Map<String, dynamic>;
                 return _firestoreDocToProduct(doc.id, data, viewerUid);
-              }).toList();
+              }).where((product) => product.status != ProductStatus.sold).toList();
               
               return _buildProductGridView(products);
             },
@@ -1380,6 +1389,7 @@ class _HomePageState extends State<HomePage> {
                   viewerUid: viewerUid,
                 ))
             .whereType<Product>()
+            .where((product) => product.status != ProductStatus.sold)
             .toList();
         
         return _buildProductGridView(products);

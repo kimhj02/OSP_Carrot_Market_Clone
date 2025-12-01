@@ -234,11 +234,38 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         
         debugPrint('📦 Firestore에서 ${snapshot.docs.length}개 상품 조회됨');
         
+        // 안전한 타입 변환 헬퍼 함수
+        int? _safeInt(dynamic value) {
+          if (value == null) return null;
+          if (value is int) return value;
+          if (value is String) return int.tryParse(value);
+          return null;
+        }
+        
+        String? _safeString(dynamic value) {
+          if (value == null) return null;
+          if (value is String) return value;
+          return value.toString();
+        }
+        
+        Map<String, dynamic>? _safeMap(dynamic value) {
+          if (value == null) return null;
+          if (value is Map) return Map<String, dynamic>.from(value);
+          return null;
+        }
+        
         for (final doc in snapshot.docs) {
           try {
             final data = doc.data();
             final location = data['location'] as GeoPoint?;
             final meetLocations = data['meetLocations'] as List?;
+            
+            // 판매 완료 상품 제외
+            final statusValue = _safeInt(data['status']) ?? 0;
+            final status = ListingStatus.values[statusValue.clamp(0, ListingStatus.values.length - 1)];
+            if (status == ListingStatus.sold) {
+              continue;
+            }
             
             if (location == null) {
               debugPrint('⚠️ 상품 ${doc.id}: location이 null입니다.');
@@ -246,28 +273,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             }
             
             // Listing 객체로 변환
-          // 안전한 타입 변환 헬퍼 함수
-          int? _safeInt(dynamic value) {
-            if (value == null) return null;
-            if (value is int) return value;
-            if (value is String) return int.tryParse(value);
-            return null;
-          }
-          
-          String? _safeString(dynamic value) {
-            if (value == null) return null;
-            if (value is String) return value;
-            return value.toString();
-          }
-          
-          Map<String, dynamic>? _safeMap(dynamic value) {
-            if (value == null) return null;
-            if (value is Map) return Map<String, dynamic>.from(value);
-            return null;
-          }
-          
           final categoryValue = _safeInt(data['category']) ?? 0;
-          final statusValue = _safeInt(data['status']) ?? 0;
           final priceValue = _safeInt(data['price']) ?? 0;
           final likeCountValue = _safeInt(data['likeCount']) ?? 0;
           final viewCountValue = _safeInt(data['viewCount']) ?? 0;
@@ -401,6 +407,11 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       debugPrint('📦 로컬 모드: ${listings.length}개 상품 조회됨');
       
       for (final listing in listings) {
+        // 판매 완료 상품 제외
+        if (listing.status == ListingStatus.sold) {
+          continue;
+        }
+        
         final points =
             listing.meetLocations.isEmpty ? [listing.location] : listing.meetLocations;
         for (var i = 0; i < points.length; i++) {

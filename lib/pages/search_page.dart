@@ -199,6 +199,9 @@ class _SearchPageState extends State<SearchPage> {
   ) {
     var filtered = products;
     
+    // 판매 완료 상품 제외
+    filtered = filtered.where((p) => p.status != ProductStatus.sold).toList();
+    
     // 검색어로 필터링
     if (query.isNotEmpty) {
       filtered = filtered
