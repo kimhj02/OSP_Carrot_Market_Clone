@@ -143,13 +143,6 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
     setState(() => _isSubmitting = true);
 
     try {
-      // 갤러리에서 선택한 이미지가 없으면 에러
-      if (_selectedImages.isEmpty) {
-        _showMessage('이미지를 최소 1장 이상 등록해주세요.');
-        setState(() => _isSubmitting = false);
-        return;
-      }
-
       // 3. 최종적으로 Firestore에 저장할 이미지 URL 목록
       final List<String> images = [];
 
@@ -200,11 +193,9 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
         }
       }
 
+      // 이미지가 없으면 기본 이미지 사용
       if (images.isEmpty) {
-        // 혹시라도 여기까지 왔는데 비었으면 방어
-        _showMessage('이미지 등록에 실패했습니다. 다시 시도해주세요.');
-        setState(() => _isSubmitting = false);
-        return;
+        images.add('lib/dummy_data/아이폰.jpeg');
       }
 
       // ===== 여기부터는 기존 로직 그대로 (groupInfo, Firestore 저장 등) =====
