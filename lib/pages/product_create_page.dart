@@ -575,16 +575,12 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
             style: TextStyle(color: Colors.grey),
           )
         else
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _selectedLocations.asMap().entries.map((entry) {
-              return Chip(
-                label: Text(
-                  '${entry.key + 1}. ${entry.value.latitude.toStringAsFixed(4)}, ${entry.value.longitude.toStringAsFixed(4)}',
-                ),
-              );
-            }).toList(),
+          Text(
+            '총 ${_selectedLocations.length}개 위치 선택됨',
+            style: const TextStyle(
+              color: Colors.teal,
+              fontWeight: FontWeight.w500,
+            ),
           ),
       ],
     );
