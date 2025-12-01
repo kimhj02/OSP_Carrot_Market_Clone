@@ -392,6 +392,16 @@ class _ProductListPageState extends State<ProductListPage> {
                             '썸네일 로드: $imagePath (product: ${product.id})');
                       }
 
+                      // 'no_image' 플레이스홀더 처리
+                      if (imagePath == 'no_image') {
+                        return Container(
+                          color: Colors.grey[200],
+                          alignment: Alignment.center,
+                          child: const Icon(Icons.image_not_supported,
+                              color: Colors.grey),
+                        );
+                      }
+
                       // 1) asset (더미 이미지 포함)
                       if (_isAssetImage(imagePath)) {
                         final normalized = _normalizeAssetPath(imagePath);

@@ -1558,6 +1558,16 @@ class _HomePageState extends State<HomePage> {
                             );
                           }
 
+                          // 'no_image' 플레이스홀더 처리
+                          if (imagePath == 'no_image') {
+                            return Container(
+                              color: Colors.grey[200],
+                              alignment: Alignment.center,
+                              child: const Icon(Icons.image_not_supported,
+                                  color: Colors.grey),
+                            );
+                          }
+
                           // 🔥 asset / network 구분
                           if (_isAssetImage(imagePath)) {
                             return Image.asset(

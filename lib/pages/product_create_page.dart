@@ -193,9 +193,9 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
         }
       }
 
-      // 이미지가 없으면 기본 이미지 사용
+      // 이미지가 없으면 플레이스홀더 표시를 위한 특별한 값 사용
       if (images.isEmpty) {
-        images.add('lib/dummy_data/아이폰.jpeg');
+        images.add('no_image');
       }
 
       // ===== 여기부터는 기존 로직 그대로 (groupInfo, Firestore 저장 등) =====

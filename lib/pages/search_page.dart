@@ -371,6 +371,17 @@ class _ProductThumbnail extends StatelessWidget {
       return const _FallbackThumbnail();
     }
 
+    // 'no_image' 플레이스홀더 처리
+    if (imageUrl == 'no_image') {
+      return Container(
+        width: 60,
+        height: 60,
+        color: Colors.grey[200],
+        alignment: Alignment.center,
+        child: const Icon(Icons.image_not_supported, color: Colors.grey),
+      );
+    }
+
     if (imageUrl.startsWith('http')) {
       return Image.network(
         imageUrl,

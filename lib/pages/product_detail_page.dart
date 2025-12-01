@@ -365,10 +365,12 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                   ),
                   const Divider(height: 32),
 
-                  // 상품 설명
-                  const Text(
-                    '상품 설명',
-                    style: TextStyle(
+                  // 상품 설명 / 전달 사항
+                  Text(
+                    widget.product.category == ProductCategory.groupBuy
+                        ? '전달 사항'
+                        : '상품 설명',
+                    style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
@@ -382,6 +384,28 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                     ),
                   ),
                   const SizedBox(height: 24),
+                  
+                  // 같이사요 상품인 경우 만날 장소 설명 표시
+                  if (widget.product.category == ProductCategory.groupBuy &&
+                      widget.product.groupBuy != null &&
+                      widget.product.groupBuy!.meetPlaceText.isNotEmpty) ...[
+                    const Text(
+                      '만날 장소 설명',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      widget.product.groupBuy!.meetPlaceText,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
 
                   // 위치 정보
                   Consumer<LocationProvider>(
@@ -497,6 +521,16 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
             },
             itemBuilder: (context, index) {
               final imagePath = images[index];
+              // 'no_image' 플레이스홀더 처리
+              if (imagePath == 'no_image') {
+                return Container(
+                  color: Colors.grey[200],
+                  child: const Center(
+                    child: Icon(Icons.image_not_supported,
+                        size: 64, color: Colors.grey),
+                  ),
+                );
+              }
               return _isAssetImage(imagePath)
                   ? Image.asset(
                 imagePath,

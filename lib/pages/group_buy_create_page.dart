@@ -552,7 +552,7 @@ class _GroupBuyCreatePageState extends State<GroupBuyCreatePage> {
           'location': GeoPoint(primaryLocation.latitude, primaryLocation.longitude),
           'meetLocations': _selectedLocations.map((loc) => 
             GeoPoint(loc.latitude, loc.longitude)).toList(),
-          'images': images.isEmpty ? ['lib/dummy_data/아이폰.jpeg'] : images,
+          'images': images.isEmpty ? ['no_image'] : images,
           'category': _category.index,
           'status': 0, // ListingStatus.onSale
           'region': {
