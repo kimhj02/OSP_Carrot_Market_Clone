@@ -42,7 +42,6 @@ class _ProductEditPageState extends State<ProductEditPage> {
   late final TextEditingController _titleController;
   late final TextEditingController _priceController;
   late final TextEditingController _descriptionController;
-  late final TextEditingController _imageUrlsController;
   final ImagePicker _imagePicker = ImagePicker();
   List<XFile> _selectedImages = [];
   late final TextEditingController _groupItemController;
@@ -50,6 +49,7 @@ class _ProductEditPageState extends State<ProductEditPage> {
   late final TextEditingController _groupCurrentMembersController;
   late final TextEditingController _groupPricePerPersonController;
   late final TextEditingController _groupMeetTextController;
+  late final TextEditingController _meetLocationDetailController;
 
   late ProductCategory _category;
   DateTime? _orderDeadline;
@@ -63,7 +63,7 @@ class _ProductEditPageState extends State<ProductEditPage> {
     _titleController = TextEditingController(text: widget.product.title);
     _priceController = TextEditingController(text: widget.product.price.toString());
     _descriptionController = TextEditingController(text: widget.product.description);
-    _imageUrlsController = TextEditingController(text: widget.product.imageUrls.join(', '));
+    _meetLocationDetailController = TextEditingController(text: widget.product.meetLocationDetail ?? '');
     _category = widget.product.category;
     
     // 위치 정보 초기화
@@ -97,7 +97,7 @@ class _ProductEditPageState extends State<ProductEditPage> {
     _titleController.dispose();
     _priceController.dispose();
     _descriptionController.dispose();
-    _imageUrlsController.dispose();
+    _meetLocationDetailController.dispose();
     _groupItemController.dispose();
     _groupMaxMembersController.dispose();
     _groupCurrentMembersController.dispose();
@@ -233,14 +233,6 @@ class _ProductEditPageState extends State<ProductEditPage> {
         }
       }
       
-      // URL로 입력한 이미지도 추가
-      final urlImages = _imageUrlsController.text
-          .split(',')
-          .map((url) => url.trim())
-          .where((url) => url.isNotEmpty)
-          .toList();
-      images.addAll(urlImages);
-      
       // 기존 이미지가 있고 새로 선택한 이미지가 없으면 기존 이미지 유지
       if (images.isEmpty) {
         images = widget.product.imageUrls;
@@ -283,6 +275,9 @@ class _ProductEditPageState extends State<ProductEditPage> {
           'images': images.isEmpty ? widget.product.imageUrls : images,
           'category': _category.index,
           'description': _descriptionController.text.trim(),
+          'meetLocationDetail': _meetLocationDetailController.text.trim().isNotEmpty
+              ? _meetLocationDetailController.text.trim()
+              : null,
           'updatedAt': FieldValue.serverTimestamp(),
         };
 
@@ -316,6 +311,9 @@ class _ProductEditPageState extends State<ProductEditPage> {
           category: _category,
           description: _descriptionController.text.trim(),
           groupBuy: groupInfo,
+          meetLocationDetail: _meetLocationDetailController.text.trim().isNotEmpty
+              ? _meetLocationDetailController.text.trim()
+              : null,
         );
 
         if (mounted) {
@@ -446,15 +444,6 @@ class _ProductEditPageState extends State<ProductEditPage> {
                       ),
                     ),
                   ],
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: _imageUrlsController,
-                    decoration: const InputDecoration(
-                      labelText: '이미지 URL (선택사항, 쉼표로 구분)',
-                      border: OutlineInputBorder(),
-                      helperText: '또는 이미지 URL을 직접 입력할 수 있습니다',
-                    ),
-                  ),
                 ],
               ),
               const SizedBox(height: 16),
@@ -469,6 +458,17 @@ class _ProductEditPageState extends State<ProductEditPage> {
               ),
               const SizedBox(height: 16),
               _buildLocationSelector(),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _meetLocationDetailController,
+                decoration: const InputDecoration(
+                  labelText: '상세 거래 위치',
+                  hintText: '예: 금오공대 정문 앞 편의점, 인동동 마트 앞',
+                  border: OutlineInputBorder(),
+                  helperText: '지도에서 선택한 위치 외에 상세한 거래 장소를 입력해주세요',
+                ),
+                maxLines: 2,
+              ),
               const SizedBox(height: 16),
               if (isGroupBuy) _buildGroupBuyFields(),
               const SizedBox(height: 24),
@@ -535,16 +535,12 @@ class _ProductEditPageState extends State<ProductEditPage> {
             style: TextStyle(color: Colors.grey),
           )
         else
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _selectedLocations.asMap().entries.map((entry) {
-              return Chip(
-                label: Text(
-                  '${entry.key + 1}. ${entry.value.latitude.toStringAsFixed(4)}, ${entry.value.longitude.toStringAsFixed(4)}',
-                ),
-              );
-            }).toList(),
+          Text(
+            '총 ${_selectedLocations.length}개 위치 선택됨',
+            style: const TextStyle(
+              color: Colors.teal,
+              fontWeight: FontWeight.w500,
+            ),
           ),
       ],
     );

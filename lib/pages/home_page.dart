@@ -245,11 +245,9 @@ class _HomePageState extends State<HomePage> {
                       color: Colors.grey[50],
                       child: Column(
                         children: [
-                          // 위치 필터링 상태 및 상품 개수 표시
-                          _buildLocationFilterInfo(),
                           // 카테고리 필터 바
                           _buildCategoryFilter(),
-                          // 메인 콘텐츠
+                          // 메인 콘텐츠 (위치 필터링 정보 포함)
                           Expanded(
                             child: Container(
                               color: Colors.grey[50],
@@ -997,126 +995,141 @@ class _HomePageState extends State<HomePage> {
     EmailAuthProvider emailAuthProvider,
     BuildContext context,
   ) {
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 상품 목록 (임시 데이터)
-          _buildProductList(),
-        ],
-      ),
-    );
-  }
-
-  /// 위치 필터링 정보를 표시하는 위젯
-  Widget _buildLocationFilterInfo() {
     return Consumer2<LocationProvider, EmailAuthProvider>(
       builder: (context, locationProvider, emailAuthProvider, child) {
-        if (!locationProvider.isLocationFilterEnabled) {
-          return const SizedBox.shrink();
-        }
-
         final viewerUid = emailAuthProvider.user?.uid;
-
-        // Firebase 사용 시 StreamBuilder로 실시간 상품 개수 계산
+        
+        // Firebase 사용 시 StreamBuilder로 실시간 업데이트 (한 번만 사용)
         if (AppConfig.useFirebase) {
           return StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
                 .collection('products')
+                .orderBy('createdAt', descending: true)
                 .snapshots(),
             builder: (context, snapshot) {
-              if (!snapshot.hasData) {
-                return const SizedBox.shrink();
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
               }
-
-              final products = snapshot.data!.docs.map((doc) {
+              
+              if (snapshot.hasError) {
+                return Center(child: Text('오류: ${snapshot.error}'));
+              }
+              
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return const Center(
+                  child: Text('등록된 상품이 없습니다.'),
+                );
+              }
+              
+              // 위치 필터링이 활성화된 경우 meetLocations를 확인하여 필터링
+              var docs = snapshot.data!.docs;
+              if (locationProvider.isLocationFilterEnabled) {
+                docs = docs
+                    .where((doc) => _isProductInRadius(doc, locationProvider))
+                    .toList();
+              }
+              
+              // Product로 변환하고 판매 완료 상품 제외
+              final products = docs.map((doc) {
                 final data = doc.data() as Map<String, dynamic>;
                 return _firestoreDocToProduct(doc.id, data, viewerUid);
-              }).toList();
-
-              // 위치 필터링이 활성화된 경우 meetLocations를 확인하여 필터링
-              var filteredCount = products.length;
-              if (locationProvider.isLocationFilterEnabled) {
-                filteredCount = snapshot.data!.docs
-                    .where((doc) => _isProductInRadius(doc, locationProvider))
-                    .length;
-              }
-
-              return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                color: Colors.teal.withValues(alpha: 0.05),
-                child: Row(
-                  children: [
-                    Icon(
-                      locationProvider.isCurrentLocationSelected
-                          ? Icons.my_location
-                          : Icons.school,
-                      size: 16,
-                      color: Colors.teal,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '주변 상품 $filteredCount개',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.teal[700],
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+              }).where((product) => product.status != ProductStatus.sold).toList();
+              
+              // 필터링된 상품 개수 계산
+              final filteredCount = products.length;
+              
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 위치 필터링 정보 표시
+                  if (locationProvider.isLocationFilterEnabled)
+                    _buildLocationFilterInfoWidget(filteredCount, locationProvider),
+                  // 상품 목록 표시
+                  Expanded(
+                    child: _buildProductGridView(products),
+                  ),
+                ],
               );
             },
           );
         }
-
+        
         // 로컬 모드
         var listings = LocalAppRepository.instance.getAllListings();
         
-        var filteredCount = listings.length;
-        if (locationProvider.filterLatitude != null &&
+        // 위치 필터링이 활성화된 경우 meetLocations를 확인하여 필터링
+        if (locationProvider.isLocationFilterEnabled &&
+            locationProvider.filterLatitude != null &&
             locationProvider.filterLongitude != null) {
-          filteredCount = listings.where((listing) {
+          listings = listings.where((listing) {
             return _isListingWithinRadius(
               listing,
               locationProvider.filterLatitude!,
               locationProvider.filterLongitude!,
               locationProvider.searchRadius,
             );
-          }).length;
+          }).toList();
         }
-
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          color: Colors.teal.withValues(alpha: 0.05),
-          child: Row(
-            children: [
-              Icon(
-                locationProvider.isCurrentLocationSelected
-                    ? Icons.my_location
-                    : Icons.school,
-                size: 16,
-                color: Colors.teal,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '주변 상품 $filteredCount개',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.teal[700],
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
-          ),
+        
+        // 필터링된 listings를 Product로 변환
+        final products = listings
+            .map((listing) => LocalAppRepository.instance.getProductById(
+                  listing.id,
+                  viewerUid: viewerUid,
+                ))
+            .whereType<Product>()
+            .where((product) => product.status != ProductStatus.sold)
+            .toList();
+        
+        // 필터링된 상품 개수 계산
+        final filteredCount = products.length;
+        
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 위치 필터링 정보 표시
+            if (locationProvider.isLocationFilterEnabled)
+              _buildLocationFilterInfoWidget(filteredCount, locationProvider),
+            // 상품 목록 표시
+            Expanded(
+              child: _buildProductGridView(products),
+            ),
+          ],
         );
       },
     );
   }
+
+  /// 위치 필터링 정보를 표시하는 위젯 (개수만 받아서 표시)
+  Widget _buildLocationFilterInfoWidget(int filteredCount, LocationProvider locationProvider) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: Colors.teal.withValues(alpha: 0.05),
+      child: Row(
+        children: [
+          Icon(
+            locationProvider.isCurrentLocationSelected
+                ? Icons.my_location
+                : Icons.school,
+            size: 16,
+            color: Colors.teal,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '주변 상품 $filteredCount개',
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.teal[700],
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
 
   /// 카테고리 필터 바를 생성하는 위젯
   Widget _buildCategoryFilter() {
@@ -1309,84 +1322,6 @@ class _HomePageState extends State<HomePage> {
   }
 
 
-  /// 상품 목록을 생성하는 위젯
-  Widget _buildProductList() {
-    final viewerUid = context.read<EmailAuthProvider>().user?.uid;
-    
-    // LocationProvider 변경 감지를 위해 Consumer로 감싸기
-    return Consumer<LocationProvider>(
-      builder: (context, locationProvider, child) {
-        // Firebase 사용 시 StreamBuilder로 실시간 업데이트
-        if (AppConfig.useFirebase) {
-          return StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('products')
-                .orderBy('createdAt', descending: true)
-                .snapshots(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              
-              if (snapshot.hasError) {
-                return Center(child: Text('오류: ${snapshot.error}'));
-              }
-              
-              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                return const Center(
-                  child: Text('등록된 상품이 없습니다.'),
-                );
-              }
-              
-              // 위치 필터링이 활성화된 경우 meetLocations를 확인하여 필터링
-              var docs = snapshot.data!.docs;
-              if (locationProvider.isLocationFilterEnabled) {
-                docs = docs
-                    .where((doc) => _isProductInRadius(doc, locationProvider))
-                    .toList();
-              }
-              
-              final products = docs.map((doc) {
-                final data = doc.data() as Map<String, dynamic>;
-                return _firestoreDocToProduct(doc.id, data, viewerUid);
-              }).toList();
-              
-              return _buildProductGridView(products);
-            },
-          );
-        }
-        
-        // 로컬 모드
-        var listings = LocalAppRepository.instance.getAllListings();
-        
-        // 위치 필터링이 활성화된 경우 meetLocations를 확인하여 필터링
-        if (locationProvider.isLocationFilterEnabled &&
-            locationProvider.filterLatitude != null &&
-            locationProvider.filterLongitude != null) {
-          listings = listings.where((listing) {
-            return _isListingWithinRadius(
-              listing,
-              locationProvider.filterLatitude!,
-              locationProvider.filterLongitude!,
-              locationProvider.searchRadius,
-            );
-          }).toList();
-        }
-        
-        // 필터링된 listings를 Product로 변환
-        final products = listings
-            .map((listing) => LocalAppRepository.instance.getProductById(
-                  listing.id,
-                  viewerUid: viewerUid,
-                ))
-            .whereType<Product>()
-            .toList();
-        
-        return _buildProductGridView(products);
-      },
-    );
-  }
-  
   /// Product 리스트를 GridView로 표시
   Widget _buildProductGridView(List<Product> products) {
     var allProducts = products.map((product) {
@@ -1482,8 +1417,6 @@ class _HomePageState extends State<HomePage> {
         );
 
         return ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
           itemCount: mergedList.length,
           itemBuilder: (context, index) {
             final item = mergedList[index];
@@ -1545,6 +1478,16 @@ class _HomePageState extends State<HomePage> {
                             return const Icon(
                               Icons.image,
                               color: Colors.grey,
+                            );
+                          }
+
+                          // 'no_image' 플레이스홀더 처리
+                          if (imagePath == 'no_image') {
+                            return Container(
+                              color: Colors.grey[200],
+                              alignment: Alignment.center,
+                              child: const Icon(Icons.image_not_supported,
+                                  color: Colors.grey),
                             );
                           }
 

@@ -36,7 +36,6 @@ class _GroupBuyCreatePageState extends State<GroupBuyCreatePage> {
   final TextEditingController _meetingPlaceController =
       TextEditingController();
   final TextEditingController _memoController = TextEditingController();
-  final TextEditingController _imageUrlsController = TextEditingController();
 
   final ImagePicker _imagePicker = ImagePicker();
   List<XFile> _selectedImages = [];
@@ -54,7 +53,6 @@ class _GroupBuyCreatePageState extends State<GroupBuyCreatePage> {
     _perPersonPriceController.dispose();
     _meetingPlaceController.dispose();
     _memoController.dispose();
-    _imageUrlsController.dispose();
     super.dispose();
   }
 
@@ -273,15 +271,6 @@ class _GroupBuyCreatePageState extends State<GroupBuyCreatePage> {
                         ),
                       ),
                     ],
-                    const SizedBox(height: 8),
-                    TextFormField(
-                      controller: _imageUrlsController,
-                      decoration: const InputDecoration(
-                        labelText: '이미지 URL (선택사항, 쉼표로 구분)',
-                        border: OutlineInputBorder(),
-                        helperText: '또는 이미지 URL을 직접 입력할 수 있습니다',
-                      ),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -309,16 +298,12 @@ class _GroupBuyCreatePageState extends State<GroupBuyCreatePage> {
                         style: TextStyle(color: Colors.grey),
                       )
                     else
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: _selectedLocations.asMap().entries.map((entry) {
-                          return Chip(
-                            label: Text(
-                              '${entry.key + 1}. ${entry.value.latitude.toStringAsFixed(4)}, ${entry.value.longitude.toStringAsFixed(4)}',
-                            ),
-                          );
-                        }).toList(),
+                      Text(
+                        '총 ${_selectedLocations.length}개 위치 선택됨',
+                        style: const TextStyle(
+                          color: Colors.orange,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                   ],
                 ),
@@ -530,14 +515,6 @@ class _GroupBuyCreatePageState extends State<GroupBuyCreatePage> {
           images.add(savedFile.path);
         }
       }
-      
-      // URL로 입력한 이미지도 추가
-      final urlImages = _imageUrlsController.text
-          .split(',')
-          .map((url) => url.trim())
-          .where((url) => url.isNotEmpty)
-          .toList();
-      images.addAll(urlImages);
 
       final groupInfo = GroupBuyInfo(
         itemSummary: _itemController.text.trim(),
@@ -575,7 +552,7 @@ class _GroupBuyCreatePageState extends State<GroupBuyCreatePage> {
           'location': GeoPoint(primaryLocation.latitude, primaryLocation.longitude),
           'meetLocations': _selectedLocations.map((loc) => 
             GeoPoint(loc.latitude, loc.longitude)).toList(),
-          'images': images.isEmpty ? ['lib/dummy_data/아이폰.jpeg'] : images,
+          'images': images.isEmpty ? ['no_image'] : images,
           'category': _category.index,
           'status': 0, // ListingStatus.onSale
           'region': {

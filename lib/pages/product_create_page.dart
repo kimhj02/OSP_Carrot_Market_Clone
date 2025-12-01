@@ -29,7 +29,6 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
   final _titleController = TextEditingController();
   final _priceController = TextEditingController();
   final _descriptionController = TextEditingController();
-  final _imageUrlsController = TextEditingController();
   final ImagePicker _imagePicker = ImagePicker();
   List<XFile> _selectedImages = [];
   final _groupItemController = TextEditingController();
@@ -51,7 +50,6 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
     _titleController.dispose();
     _priceController.dispose();
     _descriptionController.dispose();
-    _imageUrlsController.dispose();
     _groupItemController.dispose();
     _groupMaxMembersController.dispose();
     _groupCurrentMembersController.dispose();
@@ -145,20 +143,6 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
     setState(() => _isSubmitting = true);
 
     try {
-      // 1. URL로 입력한 이미지
-      final urlImages = _imageUrlsController.text
-          .split(',')
-          .map((url) => url.trim())
-          .where((url) => url.isNotEmpty)
-          .toList();
-
-      // 2. 갤러리에서 선택한 이미지가 1장도 없고, URL도 없으면 에러
-      if (_selectedImages.isEmpty && urlImages.isEmpty) {
-        _showMessage('이미지를 최소 1장 이상 등록해주세요.');
-        setState(() => _isSubmitting = false);
-        return;
-      }
-
       // 3. 최종적으로 Firestore에 저장할 이미지 URL 목록
       final List<String> images = [];
 
@@ -209,14 +193,9 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
         }
       }
 
-      // URL로 입력한 이미지도 최종 리스트에 추가
-      images.addAll(urlImages);
-
+      // 이미지가 없으면 플레이스홀더 표시를 위한 특별한 값 사용
       if (images.isEmpty) {
-        // 혹시라도 여기까지 왔는데 비었으면 방어
-        _showMessage('이미지 등록에 실패했습니다. 다시 시도해주세요.');
-        setState(() => _isSubmitting = false);
-        return;
+        images.add('no_image');
       }
 
       // ===== 여기부터는 기존 로직 그대로 (groupInfo, Firestore 저장 등) =====
@@ -470,15 +449,6 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
                       ),
                     ),
                   ],
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: _imageUrlsController,
-                    decoration: const InputDecoration(
-                      labelText: '이미지 URL (선택사항, 쉼표로 구분)',
-                      border: OutlineInputBorder(),
-                      helperText: '또는 이미지 URL을 직접 입력할 수 있습니다',
-                    ),
-                  ),
                 ],
               ),
               const SizedBox(height: 16),
@@ -596,16 +566,12 @@ class _ProductCreatePageState extends State<ProductCreatePage> {
             style: TextStyle(color: Colors.grey),
           )
         else
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _selectedLocations.asMap().entries.map((entry) {
-              return Chip(
-                label: Text(
-                  '${entry.key + 1}. ${entry.value.latitude.toStringAsFixed(4)}, ${entry.value.longitude.toStringAsFixed(4)}',
-                ),
-              );
-            }).toList(),
+          Text(
+            '총 ${_selectedLocations.length}개 위치 선택됨',
+            style: const TextStyle(
+              color: Colors.teal,
+              fontWeight: FontWeight.w500,
+            ),
           ),
       ],
     );

@@ -461,7 +461,16 @@ class _ProfilePageState extends State<ProfilePage>
                     top: Radius.circular(8),
                   ),
                   child: product.imageUrls.isNotEmpty
-                      ? product.imageUrls.first.startsWith('lib/')
+                      ? product.imageUrls.first == 'no_image'
+                          ? Container(
+                              color: Colors.grey[200],
+                              alignment: Alignment.center,
+                              child: const Icon(
+                                Icons.image_not_supported,
+                                color: Colors.grey,
+                              ),
+                            )
+                          : product.imageUrls.first.startsWith('lib/')
                             ? Image.asset(
                                 product.imageUrls.first,
                                 fit: BoxFit.cover,

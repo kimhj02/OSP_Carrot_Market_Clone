@@ -40,6 +40,9 @@ class _ProductListPageState extends State<ProductListPage> {
       ) {
     List<Product> filtered = List<Product>.from(baseProducts);
 
+    // 판매 완료 상품 제외
+    filtered = filtered.where((product) => product.status != ProductStatus.sold).toList();
+
     // 위치 필터
     if (locationProvider != null &&
         locationProvider.isLocationFilterEnabled &&
@@ -387,6 +390,16 @@ class _ProductListPageState extends State<ProductListPage> {
                       if (kDebugMode) {
                         debugPrint(
                             '썸네일 로드: $imagePath (product: ${product.id})');
+                      }
+
+                      // 'no_image' 플레이스홀더 처리
+                      if (imagePath == 'no_image') {
+                        return Container(
+                          color: Colors.grey[200],
+                          alignment: Alignment.center,
+                          child: const Icon(Icons.image_not_supported,
+                              color: Colors.grey),
+                        );
                       }
 
                       // 1) asset (더미 이미지 포함)

@@ -199,6 +199,9 @@ class _SearchPageState extends State<SearchPage> {
   ) {
     var filtered = products;
     
+    // 판매 완료 상품 제외
+    filtered = filtered.where((p) => p.status != ProductStatus.sold).toList();
+    
     // 검색어로 필터링
     if (query.isNotEmpty) {
       filtered = filtered
@@ -238,7 +241,7 @@ class _SearchPageState extends State<SearchPage> {
       ),
       title: Text(product.title),
       subtitle: Text(
-        '${product.formattedPrice} · ${product.location}',
+        '${product.formattedPrice} · ${product.meetLocationDetail?.isNotEmpty == true ? product.meetLocationDetail! : product.location}',
       ),
       trailing: Text(
         product.statusText,
@@ -366,6 +369,17 @@ class _ProductThumbnail extends StatelessWidget {
 
     if (imageUrl == null) {
       return const _FallbackThumbnail();
+    }
+
+    // 'no_image' 플레이스홀더 처리
+    if (imageUrl == 'no_image') {
+      return Container(
+        width: 60,
+        height: 60,
+        color: Colors.grey[200],
+        alignment: Alignment.center,
+        child: const Icon(Icons.image_not_supported, color: Colors.grey),
+      );
     }
 
     if (imageUrl.startsWith('http')) {
