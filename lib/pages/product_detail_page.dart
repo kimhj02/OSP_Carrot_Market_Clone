@@ -21,7 +21,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' hide EmailAuthProvider;
@@ -387,25 +386,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                   // 위치 정보
                   Consumer<LocationProvider>(
                     builder: (context, locationProvider, child) {
-                      String distanceText = '';
-                      if (locationProvider.isLocationFilterEnabled &&
-                          locationProvider.filterLatitude != null &&
-                          locationProvider.filterLongitude != null &&
-                          widget.product.x != 0.0 &&
-                          widget.product.y != 0.0) {
-                        final distance = Geolocator.distanceBetween(
-                          locationProvider.filterLatitude!,
-                          locationProvider.filterLongitude!,
-                          widget.product.x,
-                          widget.product.y,
-                        );
-                        if (distance >= 1000) {
-                          distanceText = ' • ${(distance / 1000).toStringAsFixed(1)}km';
-                        } else {
-                          distanceText = ' • ${distance.toInt()}m';
-                        }
-                      }
-
                       return InkWell(
                         onTap: () {
                           // 지도에서 위치 보기
@@ -422,7 +402,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                '${widget.product.location}$distanceText',
+                                '거래 위치 보기',
                                 style: TextStyle(
                                   fontSize: 14,
                                   color: Colors.grey[700],
@@ -636,14 +616,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                widget.product.location,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[600],
                 ),
               ),
             ],
