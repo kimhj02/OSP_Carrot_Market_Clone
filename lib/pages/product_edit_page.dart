@@ -49,6 +49,7 @@ class _ProductEditPageState extends State<ProductEditPage> {
   late final TextEditingController _groupCurrentMembersController;
   late final TextEditingController _groupPricePerPersonController;
   late final TextEditingController _groupMeetTextController;
+  late final TextEditingController _meetLocationDetailController;
 
   late ProductCategory _category;
   DateTime? _orderDeadline;
@@ -62,6 +63,7 @@ class _ProductEditPageState extends State<ProductEditPage> {
     _titleController = TextEditingController(text: widget.product.title);
     _priceController = TextEditingController(text: widget.product.price.toString());
     _descriptionController = TextEditingController(text: widget.product.description);
+    _meetLocationDetailController = TextEditingController(text: widget.product.meetLocationDetail ?? '');
     _category = widget.product.category;
     
     // 위치 정보 초기화
@@ -95,6 +97,7 @@ class _ProductEditPageState extends State<ProductEditPage> {
     _titleController.dispose();
     _priceController.dispose();
     _descriptionController.dispose();
+    _meetLocationDetailController.dispose();
     _groupItemController.dispose();
     _groupMaxMembersController.dispose();
     _groupCurrentMembersController.dispose();
@@ -272,6 +275,9 @@ class _ProductEditPageState extends State<ProductEditPage> {
           'images': images.isEmpty ? widget.product.imageUrls : images,
           'category': _category.index,
           'description': _descriptionController.text.trim(),
+          'meetLocationDetail': _meetLocationDetailController.text.trim().isNotEmpty
+              ? _meetLocationDetailController.text.trim()
+              : null,
           'updatedAt': FieldValue.serverTimestamp(),
         };
 
@@ -305,6 +311,9 @@ class _ProductEditPageState extends State<ProductEditPage> {
           category: _category,
           description: _descriptionController.text.trim(),
           groupBuy: groupInfo,
+          meetLocationDetail: _meetLocationDetailController.text.trim().isNotEmpty
+              ? _meetLocationDetailController.text.trim()
+              : null,
         );
 
         if (mounted) {
@@ -449,6 +458,17 @@ class _ProductEditPageState extends State<ProductEditPage> {
               ),
               const SizedBox(height: 16),
               _buildLocationSelector(),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _meetLocationDetailController,
+                decoration: const InputDecoration(
+                  labelText: '상세 거래 위치',
+                  hintText: '예: 금오공대 정문 앞 편의점, 인동동 마트 앞',
+                  border: OutlineInputBorder(),
+                  helperText: '지도에서 선택한 위치 외에 상세한 거래 장소를 입력해주세요',
+                ),
+                maxLines: 2,
+              ),
               const SizedBox(height: 16),
               if (isGroupBuy) _buildGroupBuyFields(),
               const SizedBox(height: 24),

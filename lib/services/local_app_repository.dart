@@ -292,6 +292,7 @@ class LocalAppRepository {
     ListingStatus? status,
     GroupBuyInfo? groupBuy,
     int? viewCount,
+    String? meetLocationDetail,
   }) async {
     final listing = _listings[listingId];
     if (listing == null) {
@@ -308,6 +309,7 @@ class LocalAppRepository {
       status: status ?? listing.status,
       groupBuy: groupBuy ?? listing.groupBuy,
       viewCount: viewCount ?? listing.viewCount,
+      meetLocationDetail: meetLocationDetail ?? listing.meetLocationDetail,
       updatedAt: DateTime.now(),
     );
 
