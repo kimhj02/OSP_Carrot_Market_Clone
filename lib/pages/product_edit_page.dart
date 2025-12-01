@@ -42,7 +42,6 @@ class _ProductEditPageState extends State<ProductEditPage> {
   late final TextEditingController _titleController;
   late final TextEditingController _priceController;
   late final TextEditingController _descriptionController;
-  late final TextEditingController _imageUrlsController;
   final ImagePicker _imagePicker = ImagePicker();
   List<XFile> _selectedImages = [];
   late final TextEditingController _groupItemController;
@@ -63,7 +62,6 @@ class _ProductEditPageState extends State<ProductEditPage> {
     _titleController = TextEditingController(text: widget.product.title);
     _priceController = TextEditingController(text: widget.product.price.toString());
     _descriptionController = TextEditingController(text: widget.product.description);
-    _imageUrlsController = TextEditingController(text: widget.product.imageUrls.join(', '));
     _category = widget.product.category;
     
     // 위치 정보 초기화
@@ -97,7 +95,6 @@ class _ProductEditPageState extends State<ProductEditPage> {
     _titleController.dispose();
     _priceController.dispose();
     _descriptionController.dispose();
-    _imageUrlsController.dispose();
     _groupItemController.dispose();
     _groupMaxMembersController.dispose();
     _groupCurrentMembersController.dispose();
@@ -232,14 +229,6 @@ class _ProductEditPageState extends State<ProductEditPage> {
           images.add(savedFile.path);
         }
       }
-      
-      // URL로 입력한 이미지도 추가
-      final urlImages = _imageUrlsController.text
-          .split(',')
-          .map((url) => url.trim())
-          .where((url) => url.isNotEmpty)
-          .toList();
-      images.addAll(urlImages);
       
       // 기존 이미지가 있고 새로 선택한 이미지가 없으면 기존 이미지 유지
       if (images.isEmpty) {
@@ -446,15 +435,6 @@ class _ProductEditPageState extends State<ProductEditPage> {
                       ),
                     ),
                   ],
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: _imageUrlsController,
-                    decoration: const InputDecoration(
-                      labelText: '이미지 URL (선택사항, 쉼표로 구분)',
-                      border: OutlineInputBorder(),
-                      helperText: '또는 이미지 URL을 직접 입력할 수 있습니다',
-                    ),
-                  ),
                 ],
               ),
               const SizedBox(height: 16),
@@ -535,16 +515,12 @@ class _ProductEditPageState extends State<ProductEditPage> {
             style: TextStyle(color: Colors.grey),
           )
         else
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _selectedLocations.asMap().entries.map((entry) {
-              return Chip(
-                label: Text(
-                  '${entry.key + 1}. ${entry.value.latitude.toStringAsFixed(4)}, ${entry.value.longitude.toStringAsFixed(4)}',
-                ),
-              );
-            }).toList(),
+          Text(
+            '총 ${_selectedLocations.length}개 위치 선택됨',
+            style: const TextStyle(
+              color: Colors.teal,
+              fontWeight: FontWeight.w500,
+            ),
           ),
       ],
     );
