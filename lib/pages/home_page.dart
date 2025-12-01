@@ -1045,7 +1045,9 @@ class _HomePageState extends State<HomePage> {
                   if (locationProvider.isLocationFilterEnabled)
                     _buildLocationFilterInfoWidget(filteredCount, locationProvider),
                   // 상품 목록 표시
-                  _buildProductGridView(products),
+                  Expanded(
+                    child: _buildProductGridView(products),
+                  ),
                 ],
               );
             },
@@ -1089,7 +1091,9 @@ class _HomePageState extends State<HomePage> {
             if (locationProvider.isLocationFilterEnabled)
               _buildLocationFilterInfoWidget(filteredCount, locationProvider),
             // 상품 목록 표시
-            _buildProductGridView(products),
+            Expanded(
+              child: _buildProductGridView(products),
+            ),
           ],
         );
       },
@@ -1413,8 +1417,6 @@ class _HomePageState extends State<HomePage> {
         );
 
         return ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
           itemCount: mergedList.length,
           itemBuilder: (context, index) {
             final item = mergedList[index];
