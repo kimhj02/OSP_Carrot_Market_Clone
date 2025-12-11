@@ -85,7 +85,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
         );
       }
     } finally {
-      // ★ 성공/실패 상관없이 항상 false 로 복원
+      // 성공/실패 상관없이 항상 false 로 복원
       if (context.mounted) {
         setUploadingImage(false);
         setState(() {});
@@ -101,7 +101,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
       throw StateError('Firebase 모드에서만 이미지 업로드를 지원합니다.');
     }
 
-    // ads/타임스탬프_파일명.png 같은 경로로 저장
+    // "ads/타임스탬프_파일명.png" 경로로 저장
     final fileName =
         'ads/${DateTime.now().millisecondsSinceEpoch}_${p.basename(file.path)}';
 
@@ -491,7 +491,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                 ),
                 const SizedBox(height: 12),
 
-                // === 이미지 영역 ===
+                // 이미지 영역
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
@@ -684,7 +684,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                 ),
                 const SizedBox(height: 12),
 
-                // === 이미지 영역 ===
+                //  이미지 영역
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text(

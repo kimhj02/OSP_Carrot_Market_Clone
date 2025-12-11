@@ -22,10 +22,6 @@ class AdminService {
       AppConfig.useFirebase ? FirebaseAuth.instance : null;
 
   /// 현재 로그인한 사용자가 관리자인지 확인하는 메서드
-  ///
-  /// Returns:
-  ///   - true: 관리자 권한이 있는 경우
-  ///   - false: 관리자 권한이 없거나 로그인하지 않은 경우
   Future<bool> isAdmin() async {
     if (!AppConfig.useFirebase) {
       return false;
@@ -49,13 +45,6 @@ class AdminService {
   }
 
   /// 특정 이메일이 관리자인지 확인하는 메서드
-  ///
-  /// Parameters:
-  ///   - email: 확인할 이메일 주소
-  ///
-  /// Returns:
-  ///   - true: 관리자 권한이 있는 경우r
-  ///   - false: 관리자 권한이 없거나 이메일이 없는 경우
   Future<bool> isAdminByEmail(String email) async {
     if (!AppConfig.useFirebase) {
       return false;
@@ -78,9 +67,6 @@ class AdminService {
   }
 
   /// 관리자 목록을 가져오는 메서드
-  ///
-  /// Returns:
-  ///   - 관리자 이메일 목록
   Future<List<String>> getAdminEmails() async {
     if (!AppConfig.useFirebase) {
       return [];
