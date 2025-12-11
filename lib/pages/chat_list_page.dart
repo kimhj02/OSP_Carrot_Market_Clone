@@ -26,18 +26,18 @@ import 'package:flutter_sandbox/models/firestore_schema.dart';
 
 /// 채팅방 필터 타입
 enum ChatFilter {
-  all,      // 전체
-  selling,  // 판매
-  buying,   // 구매
-  unread,   // 안 읽은 채팅방
+  all, // 전체
+  selling, // 판매
+  buying, // 구매
+  unread, // 안 읽은 채팅방
   groupBuy, // 같이사요
 }
 
 /// 채팅방 정렬 방식
 enum ChatSortType {
-  latest,   // 최신순
-  unread,   // 안 읽은 순
-  name,     // 이름순
+  latest, // 최신순
+  unread, // 안 읽은 순
+  name, // 이름순
 }
 
 /// 채팅방 모델
@@ -74,7 +74,9 @@ class ChatRoom {
     return ChatRoom(
       id: doc.id,
       participants: List<String>.from(data['participants'] ?? []),
-      participantNames: Map<String, String>.from(data['participantNames'] ?? {}),
+      participantNames: Map<String, String>.from(
+        data['participantNames'] ?? {},
+      ),
       productId: data['productId'] ?? '',
       productTitle: data['productTitle'] ?? '',
       productImage: data['productImage'] ?? '',
@@ -84,7 +86,8 @@ class ChatRoom {
       unreadCount: Map<String, int>.from(
         (data['unreadCount'] as Map<String, dynamic>?)?.map(
               (key, value) => MapEntry(key, value as int),
-        ) ?? {},
+            ) ??
+            {},
       ),
       type: data['type'] ?? 'purchase',
     );
@@ -96,15 +99,15 @@ class ChatRoom {
       // 그룹 채팅: 상품 제목 표시
       return productTitle.isNotEmpty ? productTitle : '같이사요 채팅';
     }
-    
+
     final opponentId = participants.firstWhere(
-          (id) => id != currentUserId,
+      (id) => id != currentUserId,
       orElse: () => '',
     );
     return participantNames[opponentId] ?? '알 수 없음';
   }
 
-  /// 내 읽지 않은 메시지 수
+  /// 읽지 않은 메시지 수
   int getMyUnreadCount(String currentUserId) {
     return unreadCount[currentUserId] ?? 0;
   }
@@ -137,12 +140,8 @@ class _ChatListPageState extends State<ChatListPage> {
     final currentUserId = context.watch<EmailAuthProvider>().user?.uid;
     if (currentUserId == null) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('채팅'),
-        ),
-        body: const Center(
-          child: Text('로그인이 필요합니다'),
-        ),
+        appBar: AppBar(title: const Text('채팅')),
+        body: const Center(child: Text('로그인이 필요합니다')),
       );
     }
 
@@ -150,18 +149,18 @@ class _ChatListPageState extends State<ChatListPage> {
       backgroundColor: Colors.grey[50],
       body: SafeArea(
         child: Column(
-        children: [
-          // 헤더와 필터 버튼들
-          _buildFilterButtons(),
+          children: [
+            // 헤더와 필터 버튼들
+            _buildFilterButtons(),
 
-          // 채팅 리스트
-          Expanded(
-            child: Container(
-              color: Colors.white,
-              child: _buildChatList(currentUserId),
+            // 채팅 리스트
+            Expanded(
+              child: Container(
+                color: Colors.white,
+                child: _buildChatList(currentUserId),
+              ),
             ),
-          ),
-        ],
+          ],
         ),
       ),
     );
@@ -227,10 +226,7 @@ class _ChatListPageState extends State<ChatListPage> {
           ),
         ),
         // 구분선
-        Container(
-          height: 1,
-          color: Colors.grey[200],
-        ),
+        Container(height: 1, color: Colors.grey[200]),
       ],
     );
   }
@@ -250,11 +246,15 @@ class _ChatListPageState extends State<ChatListPage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected 
-              ? buttonColor 
-              : (isGroupBuy ? Colors.orange[500]!.withValues(alpha: 0.1) : Colors.white),
+          color: isSelected
+              ? buttonColor
+              : (isGroupBuy
+                    ? Colors.orange[500]!.withValues(alpha: 0.1)
+                    : Colors.white),
           border: Border.all(
-            color: isSelected ? buttonColor : (isGroupBuy ? Colors.orange[500]! : Colors.grey[300]!),
+            color: isSelected
+                ? buttonColor
+                : (isGroupBuy ? Colors.orange[500]! : Colors.grey[300]!),
             width: isSelected ? 1.5 : 1,
           ),
           borderRadius: BorderRadius.circular(20),
@@ -262,8 +262,8 @@ class _ChatListPageState extends State<ChatListPage> {
         child: Text(
           label,
           style: TextStyle(
-            color: isSelected 
-                ? Colors.white 
+            color: isSelected
+                ? Colors.white
                 : (isGroupBuy ? Colors.orange[500]! : Colors.black87),
             fontSize: 14,
             fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
@@ -299,7 +299,8 @@ class _ChatListPageState extends State<ChatListPage> {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final chatRooms = snapshot.data?.docs
+          final chatRooms =
+              snapshot.data?.docs
                   .map((doc) => ChatRoom.fromFirestore(doc))
                   .toList() ??
               [];
@@ -319,9 +320,7 @@ class _ChatListPageState extends State<ChatListPage> {
         stream: LocalAppRepository.instance.watchChatRooms(currentUserId),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
-            return Center(
-              child: Text('오류가 발생했습니다\n${snapshot.error}'),
-            );
+            return Center(child: Text('오류가 발생했습니다\n${snapshot.error}'));
           }
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -344,11 +343,8 @@ class _ChatListPageState extends State<ChatListPage> {
   Widget _buildChatRoomList(List<ChatRoom> chatRooms, String currentUserId) {
     return ListView.separated(
       itemCount: chatRooms.length,
-      separatorBuilder: (context, index) => Divider(
-        height: 1,
-        indent: 80,
-        color: Colors.grey[200],
-      ),
+      separatorBuilder: (context, index) =>
+          Divider(height: 1, indent: 80, color: Colors.grey[200]),
       itemBuilder: (context, index) {
         final chatRoom = chatRooms[index];
         return _ChatListItem(
@@ -372,31 +368,29 @@ class _ChatListPageState extends State<ChatListPage> {
         return chatRooms;
 
       case ChatFilter.selling:
-        return chatRooms.where((room) =>
-            room.isSellingChat(currentUserId)
-        ).toList();
+        return chatRooms
+            .where((room) => room.isSellingChat(currentUserId))
+            .toList();
 
       case ChatFilter.buying:
-        return chatRooms.where((room) =>
-            room.isBuyingChat(currentUserId)
-        ).toList();
+        return chatRooms
+            .where((room) => room.isBuyingChat(currentUserId))
+            .toList();
 
       case ChatFilter.unread:
-        return chatRooms.where((room) =>
-        room.getMyUnreadCount(currentUserId) > 0
-        ).toList();
+        return chatRooms
+            .where((room) => room.getMyUnreadCount(currentUserId) > 0)
+            .toList();
 
       case ChatFilter.groupBuy:
-        return chatRooms.where((room) =>
-            room.type == 'groupBuy'
-        ).toList();
+        return chatRooms.where((room) => room.type == 'groupBuy').toList();
     }
   }
 
   /// 정렬 적용
   List<ChatRoom> _applySort(List<ChatRoom> chatRooms, String currentUserId) {
     final sorted = List<ChatRoom>.from(chatRooms);
-    
+
     switch (_sortType) {
       case ChatSortType.latest:
         sorted.sort((a, b) {
@@ -425,7 +419,7 @@ class _ChatListPageState extends State<ChatListPage> {
         });
         break;
     }
-    
+
     return sorted;
   }
 
@@ -494,17 +488,16 @@ class _ChatListPageState extends State<ChatListPage> {
                   this.setState(() {
                     _notificationsEnabled = value;
                   });
-                  
+
                   // Firestore에 알림 설정 저장
                   if (AppConfig.useFirebase) {
                     FirebaseFirestore.instance
                         .collection('users')
                         .doc(currentUserId)
-                        .update({
-                      'notificationsEnabled': value,
-                    }).catchError((e) {
-                      debugPrint('알림 설정 저장 실패: $e');
-                    });
+                        .update({'notificationsEnabled': value})
+                        .catchError((e) {
+                          debugPrint('알림 설정 저장 실패: $e');
+                        });
                   }
                 },
               );
@@ -544,14 +537,11 @@ class _ChatListPageState extends State<ChatListPage> {
       context,
       MaterialPageRoute(
         builder: (context) => ChatPage(
-          chatRoomId: chatRoom.id,  // ✅ chatRoomId 전달
+          chatRoomId: chatRoom.id, // chatRoomId 전달
           opponentName: chatRoom.getOpponentName(currentUserId),
         ),
       ),
-    ).then((_) {
-      // 채팅 페이지에서 돌아왔을 때 목록 새로고침
-      // StreamBuilder가 자동으로 업데이트하므로 별도 처리 불필요
-    });
+    ).then((_) {});
   }
 
   /// 채팅방 삭제
@@ -570,9 +560,7 @@ class _ChatListPageState extends State<ChatListPage> {
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, true),
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.redAccent,
-              ),
+              style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
               child: const Text('삭제'),
             ),
           ],
@@ -586,8 +574,8 @@ class _ChatListPageState extends State<ChatListPage> {
 
     try {
       if (AppConfig.useFirebase) {
-        // Firestore에서 채팅방 삭제 (트랜잭션 사용으로 race condition 방지)
-        // 사용자별로 숨김 처리: participants에서 제거
+        // Firestore에서 채팅방 삭제 (경쟁 조건 방지)
+        // 사용자별로 숨김 처리
         final chatRoomRef = FirebaseFirestore.instance
             .collection('chatRooms')
             .doc(chatRoom.id);
@@ -595,7 +583,7 @@ class _ChatListPageState extends State<ChatListPage> {
         await FirebaseFirestore.instance.runTransaction((transaction) async {
           // 트랜잭션 내에서 읽기
           final chatRoomDoc = await transaction.get(chatRoomRef);
-          
+
           if (!chatRoomDoc.exists) {
             return; // 채팅방이 이미 삭제됨
           }
@@ -612,10 +600,6 @@ class _ChatListPageState extends State<ChatListPage> {
           participants.remove(currentUserId);
 
           // participants가 비어있으면 채팅방 완전 삭제
-          // 참고: 메시지는 Firestore 보안 규칙으로 접근이 제한되므로
-          // 채팅방이 삭제되면 메시지에 접근할 수 없게 됩니다.
-          // 대량의 메시지를 클라이언트에서 삭제하는 것은 성능 문제를 일으킬 수 있으므로
-          // 채팅방만 삭제하고 메시지는 서버 측에서 정리하거나 보안 규칙으로 접근을 제한합니다.
           if (participants.isEmpty) {
             // 채팅방만 삭제 (메시지는 보안 규칙으로 접근 제한됨)
             transaction.delete(chatRoomRef);
@@ -628,7 +612,7 @@ class _ChatListPageState extends State<ChatListPage> {
           }
         });
       } else {
-        // 로컬 모드: 채팅방 삭제 기능은 아직 구현되지 않음
+        // 로컬 모드
         debugPrint('로컬 모드에서는 채팅방 삭제 기능을 지원하지 않습니다');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -670,18 +654,11 @@ class _ChatListPageState extends State<ChatListPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.chat_bubble_outline,
-            size: 64,
-            color: Colors.grey[300],
-          ),
+          Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey[300]),
           const SizedBox(height: 16),
           Text(
             message,
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey[600],
-            ),
+            style: TextStyle(fontSize: 16, color: Colors.grey[600]),
           ),
         ],
       ),
@@ -782,10 +759,7 @@ class _ChatListItem extends StatelessWidget {
                       ),
                       Text(
                         timeText,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[600],
-                        ),
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                       ),
                     ],
                   ),
@@ -794,10 +768,7 @@ class _ChatListItem extends StatelessWidget {
                   // 상품 제목
                   Text(
                     chatRoom.productTitle,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey[600],
-                    ),
+                    style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,
                   ),
@@ -869,20 +840,20 @@ class _ChatListItem extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         child: chatRoom.productImage.isNotEmpty
             ? (chatRoom.productImage.startsWith('http')
-            ? Image.network(
-          chatRoom.productImage,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return _buildErrorImage();
-          },
-        )
-            : Image.asset(
-          chatRoom.productImage,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return _buildErrorImage();
-          },
-        ))
+                  ? Image.network(
+                      chatRoom.productImage,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return _buildErrorImage();
+                      },
+                    )
+                  : Image.asset(
+                      chatRoom.productImage,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return _buildErrorImage();
+                      },
+                    ))
             : _buildErrorImage(),
       ),
     );
@@ -890,11 +861,7 @@ class _ChatListItem extends StatelessWidget {
 
   /// 에러 이미지 위젯
   Widget _buildErrorImage() {
-    return Icon(
-      Icons.shopping_bag,
-      color: Colors.grey[400],
-      size: 28,
-    );
+    return Icon(Icons.shopping_bag, color: Colors.grey[400], size: 28);
   }
 
   /// 시간 포맷팅
@@ -907,20 +874,16 @@ class _ChatListItem extends StatelessWidget {
 
     final difference = today.difference(messageDate).inDays;
 
+    /// 메시지가 작성된 시간과 현재 시간을 비교하여 날짜 표기
     if (difference == 0) {
-      // 오늘: 시간 표시 (오후 2:30)
       return DateFormat('a h:mm', 'ko_KR').format(dateTime);
     } else if (difference == 1) {
-      // 어제
       return '어제';
     } else if (difference < 7) {
-      // 일주일 이내: 요일
       return DateFormat('E요일', 'ko_KR').format(dateTime);
     } else if (dateTime.year == now.year) {
-      // 올해: 월/일
       return DateFormat('M월 d일').format(dateTime);
     } else {
-      // 작년 이전: 년/월/일
       return DateFormat('yyyy.M.d').format(dateTime);
     }
   }

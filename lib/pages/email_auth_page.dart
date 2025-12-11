@@ -18,8 +18,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_sandbox/providers/email_auth_provider.dart';
 import 'package:flutter_sandbox/data/school_domains.dart';
 /// 이메일 인증 화면 위젯
-///
-/// 로그인과 회원가입을 모두 처리하는 화면입니다.
+/// 로그인과 회원가입을 모두 처리하는 화면
 class EmailAuthPage extends StatefulWidget {
   const EmailAuthPage({super.key});
 

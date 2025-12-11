@@ -40,7 +40,7 @@ class ChatMessage {
   final String text;
   final DateTime createdAt;
   final bool isRead;
-  final Set<String> readBy; // 읽은 사람들의 ID 집합
+  final Set<String> readBy; // 메시지를 읽은 사람들의 ID 집합
 
   ChatMessage({
     required this.id,
@@ -54,14 +54,14 @@ class ChatMessage {
   factory ChatMessage.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     // readBy 필드가 있으면 사용, 없으면 빈 집합으로 설정
-    // 참고: isRead 기반으로 추론하지 않는 이유는 isRead가 true일 때
-    // 보낸 사람이 읽은 것으로 오해할 수 있기 때문입니다.
-    // 메시지는 보통 보낸 사람이 아닌 다른 참여자가 읽었을 때 '읽음'으로 표시됩니다.
+    // isRead 기반으로 하지 않는 이유는 isRead가 true일 때
+    // 보낸 사람이 읽은 것으로 오해할 수 있기 때문
+    // 메시지는 보낸 사람이 아닌 다른 참여자가 읽었을 때 '읽음'으로 표시
     final readBySet = data['readBy'] != null
         ? Set<String>.from(data['readBy'] as List? ?? [])
         : <String>{};
     
-    // 디버깅: 메시지 생성 시 readBy 확인
+    // 메시지 생성 시 readBy 확인
     final senderId = data['senderId'] ?? '';
     debugPrint('📨 메시지 생성: messageId=${doc.id}, senderId=$senderId, readBy=$readBySet');
     
@@ -76,17 +76,16 @@ class ChatMessage {
   }
   
   /// 읽지 않은 사람 수를 계산 (보낸 사람 제외)
-  /// 
-  /// 참고: participants는 현재 채팅방의 참여자 목록이어야 합니다.
-  /// 새 참여자가 추가되면 participants가 업데이트되고, 읽지 않은 사람 수가 자동으로 증가합니다.
+  /// participants는 현재 채팅방의 참여자 목록
+  /// 새 참여자가 추가되면 participants가 업데이트되고, 읽지 않은 사람 수가 자동으로 증가
   int getUnreadCount(List<String> participants, String senderId) {
     // 보낸 사람을 제외한 참여자 중 읽지 않은 사람 수
     final otherParticipants = participants.where((id) => id != senderId).toList();
-    // readBy에서 보낸 사람을 제외하고 계산 (보낸 사람은 자동으로 읽은 것으로 처리되므로)
+    // readBy에서 보낸 사람을 제외하고 계산 (보낸 사람은 자동으로 읽은 것으로 처리됨)
     final readByOthers = readBy.where((id) => id != senderId).toSet();
     final unreadCount = otherParticipants.where((id) => !readByOthers.contains(id)).length;
     
-    // 디버깅: 읽지 않은 사람 수 계산 로그
+    // 읽지 않은 사람 수 계산 로그
     debugPrint('📊 읽지 않은 사람 수 계산:');
     debugPrint('  - participants: $participants (${participants.length}명)');
     debugPrint('  - senderId: $senderId');
@@ -196,15 +195,12 @@ class _ChatPageState extends State<ChatPage> {
         final batch = FirebaseFirestore.instance.batch();
 
         // 읽지 않은 메시지를 읽음으로 표시 (readBy에 현재 사용자 원자적으로 추가)
-        // FieldValue.arrayUnion을 사용하여 race condition 방지
+        // FieldValue.arrayUnion을 사용하여 경쟁 조건 방지
         for (var doc in unreadMessages) {
           final data = doc.data();
           final senderId = data['senderId'] as String? ?? '';
           final existingReadBy = List<String>.from(data['readBy'] ?? []);
           debugPrint('📖 메시지 읽음 처리: messageId=${doc.id}, senderId=$senderId, 기존 readBy=$existingReadBy');
-          
-          // FieldValue.arrayUnion을 사용하여 원자적으로 현재 사용자를 readBy에 추가
-          // 중복 추가를 방지하고 동시 읽기 시 race condition을 방지합니다
           batch.update(doc.reference, {
             'readBy': FieldValue.arrayUnion([_currentUserId!]),
             'isRead': true, // readBy에 사용자가 추가되면 읽음으로 표시
@@ -217,13 +213,13 @@ class _ChatPageState extends State<ChatPage> {
           debugPrint('✅ 메시지 읽음 처리 완료: ${unreadMessages.length}개');
         }
 
-        // unreadCount를 0으로 업데이트 (중첩 필드 원자적 업데이트)
+        // unreadCount를 0으로 업데이트
         // FieldPath를 사용하여 사용자 ID에 점(.)이 포함되어도 안전하게 처리
         final chatRoomRef = FirebaseFirestore.instance
             .collection(ChatConstants.chatRoomsCollection)
             .doc(widget.chatRoomId);
         
-        // 중첩 필드를 원자적으로 업데이트하여 race condition 방지
+        // 중첩 필드를 원자적으로 업데이트하여 경쟁 조건 방지
         await chatRoomRef.update({
           FieldPath(['unreadCount', _currentUserId!]): 0,
         });
